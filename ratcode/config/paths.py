@@ -1,13 +1,18 @@
+#%%
 ## all base paths
 import os
+from pathlib import Path
 
-os.chdir(r'C:\Users\Admin\Documents\git\ratanalysis')
+DROPBOX_ROOT = r"D:\\Learning Lab Dropbox\\Learning Lab Team Folder\\Patlab protocols"
 
-dropbox_data_location = r'D:\Learning Lab Dropbox\Learning Lab Team Folder\Patlab protocols\Data'
+DROPBOX_DATA_LOCATION = os.path.join(DROPBOX_ROOT,'Data')
 
 # for the pickles / daily figures
-dropbox_path = os.path.join(dropbox_data_location, r'FIClickRwd')
-path_store_pickles = os.path.join(dropbox_path, r'analysis')
-pickle_location = path_store_pickles
+DROPBOX_TASK_PATH = os.path.join(DROPBOX_DATA_LOCATION, r'FIClickRwd')
+PATH_STORE_PICKLES = os.path.join(DROPBOX_TASK_PATH, r'analysis')
+#PICKLE_LOCATION = PATH_STORE_PICKLES
 
-path_to_get_bhv_files = os.path.join(dropbox_path, r'behavior')
+PATH_TO_GET_BHV_FILES = os.path.join(DROPBOX_TASK_PATH, r'behavior')
+
+PATH_STORE_PHOTOMETRY_PICKLES = os.path.join(DROPBOX_TASK_PATH, r'analysis_photometry')
+# %%

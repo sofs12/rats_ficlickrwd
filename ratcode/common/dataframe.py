@@ -417,3 +417,516 @@ def midpoint_between_array_elements(original_array):
         mean_array[ii] = np.mean([original_array[ii+1],original_array[ii]])
 
     return mean_array
+
+
+
+
+""" dataframes.py
+This module completes information regarding dataframes
+"""
+
+#from ratcode.globe.globe import *
+
+def populateDataFrame(bhv_log_file, eventcode_ref):
+
+    print('populating df...')
+
+    bhv_data = pd.read_csv(bhv_log_file, sep = '\t', header = None, names = ['code', 'timestamp'])
+
+    df = pd.DataFrame(columns=['animal', 'date', 'experimenter', 'timestamp', 'eventcode', 'eventname', 'state'])
+
+    df.timestamp = bhv_data.timestamp
+    df.eventcode = bhv_data.code
+
+    x = bhv_log_file.split('\\') #goes to the last directory
+    x = x[-1].split('.') #gets rid of the file extension
+    x = x[0].split('_')
+
+    df['animal'] = x[0]
+    df['date'] = x[2]
+    df['experimenter'] = x[3]
+
+    #eventcodes to eventnames
+    df['eventname'] = df['eventcode'].map(lambda code: str(code))
+    df = df.replace({'eventname' : eventcode_ref})
+
+    df['FI'] = df.query('eventname == "FI_SESSION"').timestamp.values[0]
+    df['click'] = df.query('eventname == "CLICK_SESSION"').timestamp.values[0]
+    df['n_protocols'] = df.query('eventname == "N_PROTOCOL"').timestamp.values[0]
+
+    # new trial happens when TRIAL_PREP appears 
+    df['trialno'] = np.where(df['eventname']== 'TRIAL_PREP', 1, 0)
+    df['trialno'] = df['trialno'].cumsum(axis=0)
+
+
+    # current state - this takes a while - better way of doing this?
+    # event codes with 1st number 2 are reserved for states
+    current_state = 'none'
+    for i in range(len(df)):
+        if str(df['eventcode'][i])[0] == '2':
+            current_state = df['eventname'][i]
+
+        df['state'][i] = current_state
+
+
+    # lever, poke and lick detection
+    df['lever'] = np.where(df['eventname'] == 'LEVER_PRESSED',1,0)
+    df['poke'] = np.where(df['eventname'] == 'POKE_IN', 1,0)
+    df['lick'] = np.where(df['eventname'] == 'LICK_IN', 1,0)
+
+    return df
+
+
+
+def populateDataFrame_BLOCKS(bhv_log_file, eventcode_ref):
+
+    print('populating BLOCKS df...')
+
+    bhv_data = pd.read_csv(bhv_log_file, sep = '\t', header = None, names = ['code', 'timestamp'])
+
+    df = pd.DataFrame(columns=['animal', 'date', 'experimenter', 'timestamp', 'eventcode', 'eventname', 'state'])
+
+    df.timestamp = bhv_data.timestamp
+    df.eventcode = bhv_data.code
+
+    x = bhv_log_file.split('\\') #goes to the last directory
+    x = x[-1].split('.') #gets rid of the file extension
+    x = x[0].split('_')
+
+    df['animal'] = x[0]
+    df['date'] = x[2]
+    df['experimenter'] = x[3]
+
+    #eventcodes to eventnames
+    df['eventname'] = df['eventcode'].map(lambda code: str(code))
+    df = df.replace({'eventname' : eventcode_ref})
+
+    df['blockno'] = df.eventname.apply(lambda x: 1 if x in ['SESSION_PREP','BLOCK_PREP'] else 0)
+    df['blockno'] = df['blockno'].cumsum(axis=0)
+
+    FI_dict = dict(zip(df.blockno.unique(), np.hstack([0,df.query('eventname == "FI_SESSION"').timestamp.values])))
+    click_dict = dict(zip(df.blockno.unique(), np.hstack([0,df.query('eventname == "CLICK_SESSION"').timestamp.values])))
+    n_protocols_dict = dict(zip(df.blockno.unique(), np.hstack([0,df.query('eventname == "N_PROTOCOL"').timestamp.values])))
+    df['FI'] = df.blockno.map(FI_dict)
+    df['click'] = df.blockno.map(click_dict)
+    df['n_protocols'] = df.blockno.map(n_protocols_dict)
+
+    # the way this is done, there is always a 0 before the variables are defined, hence the > 2 instead of > 1
+    bool_change_FI = len(df.FI.dropna().unique()) > 2
+    bool_change_click = len(df.click.dropna().unique()) > 2
+    bool_change_nprot = len(df.n_protocols.dropna().unique()) > 2
+
+    df['blocks_FI'] = bool(bool_change_FI)
+    df['blocks_click'] = bool(bool_change_click)
+    df['blocks_nprot'] = bool(bool_change_nprot)
+
+    if not bool_change_FI:
+        df['FI'] = df.FI.dropna().unique()[-1]
+
+    if not bool_change_click:
+        df['click'] = df.click.dropna().unique()[-1]
+    
+    if not bool_change_nprot:
+        df['n_protocols'] = df.n_protocols.dropna().unique()[-1]
+
+
+    df['trialno'] = np.where(df['eventname']== 'TRIAL_PREP', 1, 0)
+    df['trialno'] = df['trialno'].cumsum(axis=0)
+
+
+    # current state - this takes a while - better way of doing this?
+    # event codes with 1st number 2 are reserved for states
+    current_state = 'none'
+    for i in range(len(df)):
+        if str(df['eventcode'][i])[0] == '2':
+            current_state = df['eventname'][i]
+
+        df['state'][i] = current_state
+
+
+    # lever, poke and lick detection
+    df['lever'] = np.where(df['eventname'] == 'LEVER_PRESSED',1,0)
+    df['poke'] = np.where(df['eventname'] == 'POKE_IN', 1,0)
+    df['lick'] = np.where(df['eventname'] == 'LICK_IN', 1,0)
+
+    return df
+
+
+
+def df_to_new_df(df):
+
+    print('converting to new...')
+
+    newdf = pd.DataFrame(columns = ['trialno', 'trial_start','trial_end', 'trial_duration','lever_abs', 'lever_rel', 'leverup_abs', 'leverup_rel', 'poke_abs', 'poke_rel', 'lick_abs', 'lick_rel', 'pump_abs', 'pump_abs_stop', 'pump_rel', 'pump_duration', 'first_press_s'])
+
+    trials = df.query('eventname == "TRIAL_PREP"').trialno.values
+    newdf.trialno = trials
+
+    newdf['trial_start'] = df.query('eventname == "TRIAL_PREP"').timestamp.values
+    newdf['trial_end'] = newdf['trial_start'].shift(-1)
+    newdf['trial_duration'] = newdf['trial_end'] - newdf['trial_start']
+    newdf['trial_duration_s'] = newdf['trial_duration']/1000
+    newdf['trial_duration_s'] = newdf['trial_duration_s'].astype('float')
+
+    newdf['lever_abs'] = newdf.apply(lambda x: df.query(f'eventname == "LEVER_PRESSED" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    newdf['lever_rel'] = newdf.apply(lambda x: x.lever_abs - x.trial_start, axis = 1)
+    
+    ## new -- implemented 20240206
+    newdf['leverup_abs'] = newdf.apply(lambda x: df.query(f'eventname == "LEVER_RELEASED" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    newdf['leverup_rel'] = newdf.apply(lambda x: x.leverup_abs - x.trial_start, axis = 1)
+
+    newdf['poke_abs'] = newdf.apply(lambda x: df.query(f'eventname == "POKE_IN" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    newdf['poke_rel'] = newdf.apply(lambda x: x.poke_abs - x.trial_start, axis = 1)
+
+    newdf['lick_abs'] = newdf.apply(lambda x: df.query(f'eventname == "LICK_IN" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    newdf['lick_rel'] = newdf.apply(lambda x: x.lick_abs - x.trial_start, axis = 1)
+
+    newdf['first_press_s'] = newdf['lever_rel'].apply(lambda x: x[0]/1000 if len(x) > 0 else x)
+    
+    newdf = newdf.drop(newdf.index[-1])
+
+    #if valve:
+    #    newdf['time_valve'] = newdf.apply(lambda x: df.query(f'eventname == "TIME_VALVE" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    newdf['pump_abs'] = newdf.apply(lambda x: df.query(f'eventname == "PUMP_ON" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    newdf['pump_abs_stop'] = newdf.apply(lambda x: df.query(f'eventname == "PUMP_OFF" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    
+    newdf['pump_rel'] = newdf.apply(lambda x: x.pump_abs - x.trial_start, axis = 1)
+    newdf['pump_duration'] = newdf.apply(lambda x: x.pump_abs_stop - x.pump_abs, axis = 1)
+
+    newdf['FI'] = df.FI.unique()[0]
+    newdf['click'] = df.click.unique()[0]
+    newdf['n_protocols'] = df.n_protocols.unique()[0]
+
+    return newdf
+
+
+
+def df_to_new_df_BLOCKS(df):
+
+    print('converting to new...')
+
+    newdf = pd.DataFrame(columns = ['trialno', 'trial_start','trial_end', 'trial_duration','lever_abs', 'lever_rel', 'poke_abs', 'poke_rel', 'lick_abs', 'lick_rel', 'pump_abs', 'pump_abs_stop', 'pump_rel', 'pump_duration', 'first_press_s'])
+
+    trials = df.query('eventname == "TRIAL_PREP"').trialno.values
+    newdf.trialno = trials
+    
+    newdf['trial_start'] = df.query('eventname == "TRIAL_PREP"').timestamp.values 
+    newdf['trial_end'] = newdf['trial_start'].shift(-1)
+    
+    newdf['trial_duration'] = newdf['trial_end'] - newdf['trial_start']
+    newdf['trial_duration_s'] = newdf['trial_duration']/1000
+    newdf['trial_duration_s'] = newdf['trial_duration_s'].astype('float')
+
+    newdf['lever_abs'] = newdf.apply(lambda x: df.query(f'eventname == "LEVER_PRESSED" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    newdf['lever_rel'] = newdf.apply(lambda x: x.lever_abs - x.trial_start, axis = 1)
+    
+    ## new -- implemented 20240206
+    newdf['leverup_abs'] = newdf.apply(lambda x: df.query(f'eventname == "LEVER_RELEASED" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    newdf['leverup_rel'] = newdf.apply(lambda x: x.leverup_abs - x.trial_start, axis = 1)
+
+    newdf['poke_abs'] = newdf.apply(lambda x: df.query(f'eventname == "POKE_IN" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    newdf['poke_rel'] = newdf.apply(lambda x: x.poke_abs - x.trial_start, axis = 1)
+
+    newdf['lick_abs'] = newdf.apply(lambda x: df.query(f'eventname == "LICK_IN" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    newdf['lick_rel'] = newdf.apply(lambda x: x.lick_abs - x.trial_start, axis = 1)
+
+    newdf['first_press_s'] = newdf['lever_rel'].apply(lambda x: x[0]/1000 if len(x) > 0 else x)
+    
+    newdf = newdf.drop(newdf.index[-1])
+
+    newdf['pump_abs'] = newdf.apply(lambda x: df.query(f'eventname == "PUMP_ON" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    newdf['pump_abs_stop'] = newdf.apply(lambda x: df.query(f'eventname == "PUMP_OFF" and trialno == {x.trialno}').timestamp.values, axis = 1)
+    
+    newdf['pump_rel'] = newdf.apply(lambda x: x.pump_abs - x.trial_start, axis = 1)
+    newdf['pump_duration'] = newdf.apply(lambda x: x.pump_abs_stop - x.pump_abs, axis = 1)
+
+    newdf['blockno'] = newdf.trialno.apply(lambda x: df.query(f'trialno == {x}').blockno.unique()[0])
+    newdf['FI'] = newdf.trialno.apply(lambda x: df.query(f'trialno == {x}').FI.unique()[0])
+    newdf['click'] = newdf.trialno.apply(lambda x: df.query(f'trialno == {x}').click.unique()[0])
+    newdf['n_protocols'] = newdf.trialno.apply(lambda x: df.query(f'trialno == {x}').n_protocols.unique()[0])
+
+    ## new -- implemented 20240814
+    if newdf.click.unique()[0] == 1: 
+        newdf['click_abs'] = newdf.apply(lambda x: df.query(f'eventname == "CLICK_ON" and trialno == {x.trialno}').timestamp.values, axis = 1)
+        newdf['click_rel'] = newdf.apply(lambda x: x.click_abs - x.trial_start, axis = 1)
+
+    return newdf
+
+
+
+
+
+def complete_aggregate(aggregatedf):
+    
+    datekeys = list(aggregatedf.groupby('date').groups.keys())
+    aggregatedf['session'] = aggregatedf['date'].apply(lambda x: datekeys.index(x) + 1) # so that the first session is session 1 instead of session 0
+    aggregatedf['trialno_withinsession'] = aggregatedf.trialno
+    aggregatedf['trialno'] = aggregatedf.index +1
+
+    allsessions_trial_start = []
+    allsessions_trial_number = []
+
+    #get list of the new first trial number of each session, and the start time of each session
+    for date in datekeys:
+        allsessions_trial_start.append(aggregatedf.groupby('date').get_group(date).trial_start.values[0])
+        allsessions_trial_number.append(aggregatedf.groupby('date').get_group(date).trialno.values[0])
+    
+    aggregatedf['bool_lever'] = ~aggregatedf.lever_rel.isna()
+    aggregatedf['bool_poke'] = ~aggregatedf.poke_rel.isna()
+    aggregatedf['bool_lick'] = ~aggregatedf.lick_rel.isna()
+    aggregatedf['bool_valve'] = ~aggregatedf.valve_rel.isna()
+    aggregatedf['count_lever'] = aggregatedf.apply(lambda x: len(x.lever_rel) if x.bool_lever == True else 0, axis = 1)
+    aggregatedf['count_poke'] = aggregatedf.apply(lambda x: len(x.poke_rel) if x.bool_poke == True else 0, axis = 1)
+    aggregatedf['count_lick'] = aggregatedf.apply(lambda x: len(x.lick_rel) if x.bool_lick == True else 0, axis = 1)
+
+    cp_series =  aggregatedf.apply(lambda x: change_point.accepted_cp_Gallistel(x.trialno, 2, aggregatedf, 'lever_rel', True) if len(x.lever_rel) > 0 else x.lever_rel, axis = 1)
+    aggregatedf['cp_pre'] = cp_series.apply(lambda x: x[0] if len(x) > 0 else np.nan)
+    aggregatedf['rate_pre'] = cp_series.apply(lambda x: x[3] if len(x) > 0 else np.nan)
+    aggregatedf['rateH_pre'] = aggregatedf.rate_pre.apply(lambda x: x[-1] if type(x) == np.ndarray else x)
+    aggregatedf['cp_beforeFI'] = aggregatedf.apply(lambda x: x.cp_pre < x.FI, axis = 1)
+    aggregatedf['bool_cp'] = aggregatedf.apply(lambda x: x.cp_beforeFI and x.rateH_pre < 10, axis = 1)
+    aggregatedf['cp'] = aggregatedf.apply(lambda x: x.cp_pre if x.bool_cp else np.nan, axis = 1)
+    aggregatedf['rateH'] = aggregatedf.apply(lambda x: x.rateH_pre if x.bool_cp else np.nan, axis = 1)
+
+    aggregatedf['session_vars'] = aggregatedf.apply(lambda x: f'FI {x.FI} click {bool(x.click)}', axis = 1)
+    aggregatedf['actual_rwd'] = aggregatedf.rwdmod.apply(lambda x: 1.5 if x == 1 else x)
+    aggregatedf['rwd_uL'] = aggregatedf.actual_rwd.apply(lambda x: rwd_dic[x] if x in rwd_dic.keys() else np.nan)
+    aggregatedf['session_vars_w_rwdmod'] = aggregatedf.apply(lambda x: f'FI {x.FI}\nclick {bool(x.click)}\nrwd {x.actual_rwd}', axis = 1)
+    aggregatedf['rwdrate'] = aggregatedf.apply(lambda x: x.actual_rwd / x.FI, axis = 1)
+    aggregatedf['rwdrate_uL'] = aggregatedf.apply(lambda x: x.rwd_uL / (x.FI/60), axis = 1)
+
+
+    aggregatedf['cp_normalised'] = aggregatedf.apply(lambda x: x.cp / x.FI, axis = 1)
+    aggregatedf['animaldate'] = aggregatedf.apply(lambda x: f'{x.animal} {x.date}', axis = 1)
+    aggregatedf['first_press_beforeFI'] = aggregatedf.apply(lambda x: True if x.first_press_s < x.FI else False, axis = 1)
+
+
+    # pump rwd rate
+    aggregatedf.pump_duration = aggregatedf.pump_duration.apply(lambda x: x[0] if type(x)!= float else np.nan)
+    aggregatedf['pump_volume'] = aggregatedf.pump_duration.apply(lambda x: 3.45/33*x)
+    aggregatedf['pump_rwdrate'] = aggregatedf.apply(lambda x: x.pump_volume/(x.FI/60), axis = 1)
+    aggregatedf['pump_rwdrate_clean'] = aggregatedf.pump_rwdrate.apply(lambda x: "I" if x < 80 else "II")
+
+    aggregatedf['date_mmdd'] = aggregatedf.date.apply(lambda x: x[2:])
+    aggregatedf['datetime'] = aggregatedf.date.apply(lambda x: datetime.datetime.strptime(x, '%y%m%d').date())
+    aggregatedf['date_FI'] = aggregatedf.apply(lambda x: f"{x.date_mmdd}\nFI{x.FI}", axis = 1)
+
+    aggregatedf['interpress'] = aggregatedf.lever_rel.apply(lambda x: np.diff(x)/1000)
+    aggregatedf['presses_after_cp'] = aggregatedf.apply(lambda x: x.lever_rel[x.lever_rel>x.cp*1000]/1000 if x.bool_cp == True else np.nan, axis = 1)
+    aggregatedf['presses_cp2FI'] = aggregatedf.apply(lambda x: x.presses_after_cp[x.presses_after_cp < x.FI] if x.bool_cp == True else np.nan, axis = 1)
+    aggregatedf['interpress_aftercp'] = aggregatedf.presses_cp2FI.apply(lambda x: np.diff(x) if type(x)!=float else np.nan)
+    
+    return aggregatedf
+
+
+def produce_trialtypesdf_per_experiment(animal_list, experiment, click_blocks):
+    '''
+    Return a dataframe with the number and fractions of trials of each type
+
+    Parameters:
+    animal_list: list of animals to look at data
+    experiment: experiment label [a,b,c] 
+    click_blocks: dataframe for blocks experiments, animals with click
+    '''
+
+    #ideally this doesn't live here (it's already defined in the globe)
+    extra_conds_dic = {
+    'a': 'experiment == "a" and FI_len == 3 and nprots == 14',
+    'b': 'experiment == "b" and FI_len == 3 and nprots_len == 3',
+    'c': 'experiment == "c" and FI == 30 and nprots_len == 3'
+    }
+
+    trialtypesdf = pd.DataFrame()
+
+    trialtypesdf['animal'] = animal_list 
+    trialtypesdf['experiment'] = experiment
+    trialtypesdf['no_total'] = trialtypesdf.apply(lambda x: len(click_blocks.query(f'animal == "{x.animal}" and {extra_conds_dic[x.experiment]}')), axis = 1)
+    trialtypesdf['no_transition'] = trialtypesdf.apply(lambda x: len(click_blocks.query(f'bool_cp == True and animal == "{x.animal}" and {extra_conds_dic[x.experiment]}')), axis = 1)
+    trialtypesdf['no_RT'] = trialtypesdf.apply(lambda x: len(click_blocks.query(f'count_lever == 1 and RT < 10 and animal == "{x.animal}" and {extra_conds_dic[x.experiment]}')), axis = 1)
+    trialtypesdf['no_engaged no transition'] = trialtypesdf.apply(lambda x: len(click_blocks.query(f'count_lever > 1 and bool_cp == False and animal == "{x.animal}" and {extra_conds_dic[x.experiment]}')), axis = 1)
+    trialtypesdf['no_disengaged'] = trialtypesdf.apply(lambda x: len(click_blocks.query(f'count_lever == 1 and RT >=10 and animal == "{x.animal}" and {extra_conds_dic[x.experiment]}')), axis = 1)
+
+    trialtypesdf.set_index('animal', inplace = True)
+
+    for key in trialtypesdf.keys()[2:]:
+        trialtypesdf[f'{key[3:]}'] = trialtypesdf.apply(lambda x: x[key]/x.no_total if x.no_total > 0 else 0, axis = 1)
+
+    return trialtypesdf
+
+
+
+def delete_consumption_time(df, FI, alpha):
+
+    '''
+    Return a dataframe
+
+    Parameters:
+    df: dataframe to extract cp distribution. Must have 'cp' and 'FI' as columns
+    FI: FI or list of FIs to aggregate
+    alpha: consumption time (non scalable time in the beginning of the trial)
+    '''
+
+    delete_consumption_time_df = pd.DataFrame()
+    delete_consumption_time_df['percentiles'] = np.arange(0,1.01,.01)
+
+    if type(FI) == int:
+        FI = list(FI)
+    
+    for fi in FI:
+        delete_consumption_time_df[fi] = np.quantile(df.query(f'FI == {fi}').cp.dropna().values - alpha, np.arange(0,1.01,.01))/(fi-alpha)
+
+    delete_consumption_time_df['alpha'] = alpha
+
+    delete_consumption_time_df = pd.melt(delete_consumption_time_df, id_vars = ['percentiles','alpha'], value_vars = FI)
+    delete_consumption_time_df = delete_consumption_time_df.rename(columns={'variable': 'FI', 'value': 'normalised time'})
+
+    return delete_consumption_time_df
+
+
+def expand_df(df, main_col, other_cols):
+    """
+    Convert a dataframe with arrays to a dataframe with single values.
+    Return a dataframe.
+
+    Parameters:
+
+    df: dataframe to be expanded
+    main_col: column to unstack - this is the column with the arrays; it will determine the lenght of the dataframe
+    other_cols: columns to add as extra identifiers or labels of the main_col
+    """
+    
+    if type(other_cols) == str:
+        other_cols = [other_cols]
+
+    for col in other_cols:
+        df[f'{col}_expanded'] = df.apply(lambda x: np.full(len(x[main_col]), x[col]), axis = 1)
+
+    expandf = pd.DataFrame()
+    
+    for col in other_cols:
+        expandf[col] = np.hstack(df[f'{col}_expanded'])
+    
+    expandf[main_col] = np.hstack(df[main_col])
+
+    return expandf
+
+
+def normalise_column(df, col_name, divisor = 'FI'):
+    '''
+    Adds a dataframe column to the original dataframe.
+    The new column is named [col_name]_normalised
+
+    Parameters:
+    df: dataframe to do the normalisation operation
+    col_name: string or list; name of the column(s) to normalise
+    divisor: column nameused to normalise (default is FI) 
+    '''
+    if type(col_name) == str:
+        col_name = [col_name]
+        
+    for col in col_name:
+        df[f'{col}_normalised'] = df.apply(lambda x: x[col] / x[divisor], axis = 1)
+    
+def sliceByEvent(eventname):
+    slicedf = pd.DataFrame()
+    slicedf['t'] = df.query(f'eventname == "{eventname}"').timestamp
+    slicedf['trialno'] = df.query(f'eventname == "{eventname}"').trialno
+    slicedf['kind'] = eventname
+
+    return slicedf
+
+def tidyToArrays(df, aggregate_col):
+    uniqueidx = pd.unique(df[aggregate_col])
+    
+    gg = df.groupby(aggregate_col)
+    
+    arrdf = pd.DataFrame()
+    arrdf[aggregate_col] = uniqueidx
+    arrdf[df.kind.values[0]] = arrdf['trialno'].apply(lambda x: gg.get_group(x).t.values)
+
+    return arrdf
+
+def arraysToTidy(df, unpack_col):
+
+    df['count_unpack'] = df[unpack_col].apply(lambda x: len(x))
+    col_list = list(df.columns)
+    col_list.remove('count_unpack')
+    col_list.remove(unpack_col)
+
+    tempdf = pd.DataFrame()
+
+    for col in col_list:
+        tempdf[col] = df.apply(lambda x: np.full(x['count_unpack'], x[col]), axis = 1)
+
+    tempdf[unpack_col] = df[unpack_col]
+    
+    tidydf = pd.DataFrame()
+    l = col_list
+    l.append(unpack_col)
+
+    for col in l:
+        tidydf[col] = np.hstack(tempdf[col].values)
+
+    return tidydf
+
+
+def group_and_listify(df, group_col, list_cols):
+    """
+    Groups the DataFrame by a specified column and creates lists of values for the specified columns.
+
+    Parameters:
+    df (pd.DataFrame): The input DataFrame.
+    group_col (str): The column to group by.
+    list_cols (list): The columns for which to create lists of values.
+
+    Returns:
+    pd.DataFrame: A DataFrame with grouped values turned into lists.
+    """
+    grouped_df = df.groupby(group_col).apply(
+        lambda x: pd.Series({col: x[col].tolist() for col in list_cols})
+    ).reset_index()
+    
+    return grouped_df
+
+
+def get_dlc_df(labels_path, thres = 0.7):
+    '''
+    Returns a dataframe with the labeled coordinates (coords) and a second dataframe nanified when coordinates are below a threshold (default 0.7)
+    '''
+
+    coords = pd.read_hdf(labels_path)
+    coords.columns = coords.columns.droplevel()
+    bodyparts = coords.columns.get_level_values('bodyparts').unique()
+
+    nancoords = coords.copy()
+
+    # Iterate through each body part and apply the threshold
+    for bodypart in nancoords.columns.levels[0]:
+        likelihood_col = (bodypart, 'likelihood')
+        x_col = (bodypart, 'x')
+        y_col = (bodypart, 'y')
+
+        # Mask coordinates with NaN where likelihood is below the threshold
+        mask = nancoords[likelihood_col] < thres
+        nancoords.loc[mask, x_col] = np.nan
+        nancoords.loc[mask, y_col] = np.nan
+
+    return coords, nancoords
+
+def read_gpio_into_df(ttl_timestamps_path, camera_view):
+    if not os.path.exists(ttl_timestamps_path):
+        print(f"Error: File {ttl_timestamps_path} does not exist.")
+        return
+
+    if camera_view == 'side':
+            gpiodf = pd.read_csv(ttl_timestamps_path, names=['ttl', 'frame', 'bla'], header=0)
+    if camera_view == 'top':
+            gpiodf = pd.read_csv(ttl_timestamps_path, names=['frame', 'bla', 'ttl'], header=0)
+            threshold = gpiodf.ttl.max() * 0.5  
+            gpiodf['ttl'] = (gpiodf['ttl'] > threshold).astype(int)
+
+    gpiodf['frame_session'] = gpiodf.frame - gpiodf.frame.values[0]
+    gpiodf['bool_ttl'] = (gpiodf['ttl'].shift(1, fill_value=0) == 0) & (gpiodf['ttl'] == 1)
+    gpiodf['trialno'] = gpiodf.bool_ttl.cumsum()+1
+
+    return gpiodf 
