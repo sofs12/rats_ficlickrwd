@@ -27,36 +27,66 @@ from ratcode.init import setup
 setup()
 # %%
 animal = 'Ruthenium'
-date = '251114'
-# %%
+date = '251219'
+
 THIS_PICKLE_PATH = glob.glob(rf"{PATH_STORE_PICKLES}\{animal}_{date}*.pkl")[0]
-# %%
+
 df = pd.read_pickle(THIS_PICKLE_PATH)
-# %%
+
 plt.plot(df.trial_duration)
-# %%
 sns.histplot(x = np.hstack(df.first_press_s.values))#, hue = 'FI')
-# %%
+
 if df.bool_block[0]:
     df = df[df.lever_rel.apply(lambda x: len(x)) != 0]
     df.reset_index(inplace = True, drop = True)
     df.trialno = df.index+1
 
 df['FI'] = (df.FI/1000).astype(int)
-#%%
+
 df['lever_rel_s'] = df.lever_rel.apply(lambda x: x/1000)
-#%%
+
 df['cp'] = df.trialno.apply(lambda x: change_point.accepted_cp_Gallistel(x,2,df,'lever_rel',True)[0])
-#%%    
+   
 df['count_lever'] = df.lever_rel.apply(lambda x: len(x))
 df['cp_after_FI'] = df.cp > df.FI
 df['cp'] = df.apply(lambda x: np.nan if (x.count_lever < 3 or x.cp_after_FI) else x.cp, axis = 1)
 df['bool_cp'] = ~df.cp.isna()
-#%%
 df['cp_normalised'] = df.cp/df.FI
 
 #%%
+exp = determine_experiment(df)
 
+figtitle = f'{animal} {date} | experiment {exp}'
+
+
+fig, axs = plt.subplots(2,3, figsize = (10,10), facecolor='w', tight_layout = True, sharex = 'col')
+#plt.figure(figsize = (20,10), facecolor='w', tight_layout = True)
+
+plt.suptitle(figtitle)
+
+#gs = plt.GridSpec(1,2)
+
+#plt.show()
+
+sns.histplot(ax = axs[0,0], data = df, x = 'cp', hue = 'FI',
+             palette = color_FI_blocks, element = 'step', stat = 'density', common_norm=False)
+
+sns.scatterplot(ax = axs[1,0], data = df.explode('lever_rel_s'), y = 'trialno', x = 'lever_rel_s',
+                color = 'grey', s = 10)
+
+sns.histplot(ax = axs[0,1], data = df, x = 'cp_normalised', hue = 'FI',
+             palette = color_FI_blocks, element = 'step', stat = 'density', common_norm=False)
+
+
+axs[-1,0].set_xlabel('time since reward (s)')
+axs[-1,0].set_xlim(0,70)
+
+
+plt.savefig(rf'{DROPBOX_TASK_PATH}/analysis_plots/daily_reports/{figtitle.replace('|','_')}.png', transparent = False)
+
+
+
+#%%
 def align_lvr_on_cp(cp, lvr_array, exclude_zero = True):
 
     if np.isnan(cp):
@@ -92,34 +122,6 @@ df['lvr_aligned_cp'] = df.apply(lambda x: align_lvr_on_cp(x.cp, x.lever_rel), ax
     df['cp_trial_since_block_transition'] = df['cp_trial_since_block_transition'].where(df['bool_cp'], np.nan)
 #%%
 
-exp = determine_experiment(df)
-
-figtitle = f'{animal} {date} | experiment {exp}'
-
-
-fig, axs = plt.subplots(2,3, figsize = (10,10), facecolor='w', tight_layout = True, sharex = 'col')
-#plt.figure(figsize = (20,10), facecolor='w', tight_layout = True)
-
-plt.suptitle(figtitle)
-
-#gs = plt.GridSpec(1,2)
-
-#plt.show()
-
-sns.histplot(ax = axs[0,0], data = df, x = 'cp', hue = 'FI',
-             palette = color_FI_blocks, element = 'step', stat = 'density', common_norm=False)
-
-sns.scatterplot(ax = axs[1,0], data = df.explode('lever_rel_s'), y = 'trialno', x = 'lever_rel_s',
-                color = 'grey', s = 10)
-
-sns.histplot(ax = axs[0,1], data = df, x = 'cp_normalised', hue = 'FI',
-             palette = color_FI_blocks, element = 'step', stat = 'density', common_norm=False)
-
-
-axs[-1,0].set_xlabel('time since reward (s)')
-
-
-plt.savefig(rf'{DROPBOX_TASK_PATH}/analysis_plots/daily_reports/{figtitle.replace('|','_')}.png', transparent = False)
 
 #%%
 

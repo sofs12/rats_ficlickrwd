@@ -31,10 +31,33 @@ from ratcode.common.dataframe import group_and_listify
 
 from ratcode.init import setup
 setup()
+
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from sklearn.linear_model import HuberRegressor 
+
+def get_prediction(X,y): ## need to allow this to have NaNs
+    model = HuberRegressor()
+    X = np.array(X).reshape(-1,1)
+    y = np.array(y).reshape(-1,1)
+
+    valid_indices = ~np.isnan(X).ravel() & ~np.isnan(y).ravel()
+
+    X_valid = X[valid_indices]
+    y_valid = y[valid_indices]
+    
+    model.fit(X_valid,y_valid)
+
+    predictions = np.full(len(X), np.nan)
+    valid_predictions = model.predict(X_valid)
+    predictions[valid_indices] = valid_predictions
+
+    return predictions, model
+
 # %%
 
-animal = 'Technetium'
-date = '250618'
+animal = 'Niobium'
+date = '250624'
 
 PHOTOMETRY_PATH = os.path.join(DROPBOX_TASK_PATH, 'photometry', animal)
 
@@ -180,7 +203,7 @@ F0_gfp = np.nanquantile(downharpdf.clean_poly_gfp,.1)
 downharpdf['deltaF_poly_tdtomato'] = (downharpdf.clean_poly_tdtomato - F0_tdtomato)/F0_tdtomato
 downharpdf['deltaF_poly_gfp'] = (downharpdf.clean_poly_gfp - F0_gfp)/F0_gfp
 
-downharpdf['predicted_poly_gfp_session'] = get_prediction(downharpdf.deltaF_poly_tdtomato, downharpdf.deltaF_poly_gfp)
+downharpdf['predicted_poly_gfp_session'] = get_prediction(downharpdf.deltaF_poly_tdtomato, downharpdf.deltaF_poly_gfp)[0]
 downharpdf['DA_poly_session'] = downharpdf.deltaF_poly_gfp - downharpdf.predicted_poly_gfp_session
 
 #%%
@@ -199,7 +222,7 @@ sns.lineplot(x = downharpdf.deltaF_poly_tdtomato, y = quantile_regression(downha
 sns.lineplot(x = downharpdf.deltaF_poly_tdtomato, y = quantile_regression(downharpdf.deltaF_poly_tdtomato, downharpdf.deltaF_poly_gfp, quantile = 0.99), color = 'black', ls = 'dashed', lw = 1)
 sns.lineplot(x = downharpdf.deltaF_poly_tdtomato, y = quantile_regression(downharpdf.deltaF_poly_tdtomato, downharpdf.deltaF_poly_gfp, quantile = 0.01), color = 'black', ls = 'dashed', lw = 1)
 
-sns.lineplot(x = downharpdf.deltaF_poly_tdtomato, y = get_prediction(downharpdf.deltaF_poly_tdtomato, downharpdf.deltaF_poly_gfp), color = 'forestgreen', lw = 1, label = 'huber')
+sns.lineplot(x = downharpdf.deltaF_poly_tdtomato, y = get_prediction(downharpdf.deltaF_poly_tdtomato, downharpdf.deltaF_poly_gfp)[0], color = 'forestgreen', lw = 1, label = 'huber')
 
 figtitle= f'{animal}_{date}_regressions'
 plt.suptitle(figtitle)
@@ -467,8 +490,249 @@ def figure_regression_comparison(tt):
 # %%
 for tt in jointdf.trialno:
     figure_regression_comparison(tt)
+#%%
+
+"""
+.########..########..######...########..########..######...######..####..#######..##....##....########.....###....########.....###....##.....##.########.########.########.########...######.
+.##.....##.##.......##....##..##.....##.##.......##....##.##....##..##..##.....##.###...##....##.....##...##.##...##.....##...##.##...###...###.##..........##....##.......##.....##.##....##
+.##.....##.##.......##........##.....##.##.......##.......##........##..##.....##.####..##....##.....##..##...##..##.....##..##...##..####.####.##..........##....##.......##.....##.##......
+.########..######...##...####.########..######....######...######...##..##.....##.##.##.##....########..##.....##.########..##.....##.##.###.##.######......##....######...########...######.
+.##...##...##.......##....##..##...##...##.............##.......##..##..##.....##.##..####....##........#########.##...##...#########.##.....##.##..........##....##.......##...##.........##
+.##....##..##.......##....##..##....##..##.......##....##.##....##..##..##.....##.##...###....##........##.....##.##....##..##.....##.##.....##.##..........##....##.......##....##..##....##
+.##.....##.########..######...##.....##.########..######...######..####..#######..##....##....##........##.....##.##.....##.##.....##.##.....##.########....##....########.##.....##..######.
+
+regression parameters: slope, intercept, r2, pvalue computed in a sliding window
+sliding window parameters: 0.5s size, 0.5s step (starting point)
+
+before running this code just need to run until the DS step
+"""
+
+plt.plot(downharpdf.deltaF_tdtomato, color = 'red')
+plt.plot(downharpdf.deltaF_gfp, color = 'green')
+#%%
+tdtomato = downharpdf.deltaF_tdtomato.values
+gfp = downharpdf.deltaF_gfp.values
+
+window_size_s = .5
+step_size_s = .5
+fs = 100 #Hz after downsampling
+window_size = int(window_size_s * fs)
+step_size = int(step_size_s * fs)
+
+window_starts = np.arange(0, len(tdtomato) - window_size, step_size)
+
+starts = []
+slopes = []
+intercepts = []
+r_squareds = []
+p_values = []
+
+for start in window_starts:
+    end = start + window_size
+    x_window = tdtomato[start:end]
+    y_window = gfp[start:end]
+    
+    X = sm.add_constant(x_window)
+    model = sm.OLS(y_window, X)
+    results = model.fit()
+    
+    slope = results.params[1]
+    intercept = results.params[0]
+    r_squared = results.rsquared
+    p_value = results.pvalues[1]
+
+    starts.append(start)
+    slopes.append(slope)
+    intercepts.append(intercept)
+    r_squareds.append(r_squared)
+    p_values.append(p_value)
+
+    #print(f"Window {start}-{end}: Slope={slope}, Intercept={intercept}, R²={r_squared}, p-value={p_value}")
+
 
 #%%
+
+jointdf = group_and_listify(downharpdf, 'trialno', ['timestamp_session', 'denoised_tdtomato', 'denoised_gfp'])
+
+jointdf['trial_start_harp'] = jointdf.timestamp_session.apply(lambda x: x[0])
+jointdf['trial_end_harp'] = jointdf.timestamp_session.apply(lambda x: x[-1])
+jointdf['trial_duration_harp'] = jointdf.trial_end_harp - jointdf.trial_start_harp
+
+jointdf.drop(jointdf.query('trial_duration_harp < 2').index, inplace = True)
+jointdf.reset_index(drop = True, inplace = True)
+jointdf['trialno'] = jointdf.index + 1
+# %%
+#jointdf['trialno'] = jointdf.trialno + 11 
+plt.figure()
+plt.plot(jointdf.trialno, jointdf.trial_duration_harp, label = 'harp')
+plt.plot(bhvdf.trialno, bhvdf.trial_duration/1000, '--', label = 'bhv')
+plt.title('trial duration (i.e. identity) ok?')
+plt.legend()
+plt.show()
+# %%
+
+jointdf['blockno'] = bhvdf.blockno
+jointdf['FI'] = bhvdf.FI
+jointdf['click']  = bhvdf.click
+jointdf['n_protocols'] = bhvdf.n_protocols
+jointdf['bool_block'] = bhvdf.bool_block
+
+jointdf['trial_start_arduino'] = bhvdf.trial_start
+jointdf['trial_end_arduino'] = bhvdf.trial_end
+jointdf['trial_duration_arduino'] = bhvdf.trial_duration
+
+jointdf['lever_rel_arduino'] = bhvdf.lever_rel
+
+jointdf['lever_rel_harp'] = jointdf.apply(lambda x:
+                                convert_timestamp(x.lever_rel_arduino,
+                                [0, x.trial_duration_arduino],
+                                [0, x.trial_duration_harp]), axis = 1)
+
+
+jointdf['t_trial_harp'] = jointdf.apply(lambda x: np.hstack(x.timestamp_session) - x.trial_start_harp, axis = 1)
+
+jointdf['lever_abs_harp'] = jointdf.apply(lambda x: x.lever_rel_harp + x.trial_start_harp, axis = 1)
+
+#%%
+
+# 1. Define time axis
+time_session_s = downharpdf.timestamp_session.values
+starts_s = time_session_s[0] + np.array(starts) / 100 + window_size_s/2  # Centering the time points
+
+all_lever_presses = np.hstack(jointdf.lever_abs_harp.values)
+rwd_lever_presses = np.hstack(jointdf.lever_abs_harp.apply(lambda x: x[-1]))
+nonrwd_lever_presses = np.setdiff1d(all_lever_presses, rwd_lever_presses)
+
+shapes = []
+for press_time in nonrwd_lever_presses:
+    shapes.append(
+        dict(
+            type="line",
+            xref="x",     # Reference the x-axis
+            yref="paper", # Reference the "paper" (0 to 1 scale of the whole plot)
+            x0=press_time,
+            x1=press_time,
+            y0=0,         # Bottom of the plot area
+            y1=1,         # Top of the plot area
+            line=dict(
+                color="rgba(56, 64, 66, 0.5)", # dark with transparency
+                width=1,
+            ),
+            layer="below", # Put them behind the data so they don't hide your traces
+        )
+    )
+
+shapes_rwd = []
+for press_time in rwd_lever_presses:
+    shapes_rwd.append(
+        dict(
+            type="line",
+            xref="x",     # Reference the x-axis
+            yref="paper", # Reference the "paper" (0 to 1 scale of the whole plot)
+            x0=press_time,
+            x1=press_time,
+            y0=0,         # Bottom of the plot area
+            y1=1,         # Top of the plot area
+            line=dict(
+                color="rgba(0, 147, 252, 1)", # blue with transparency
+                width=1,
+            ),
+            layer="below", # Put them behind the data so they don't hide your traces
+        )
+    )
+
+# 2. Create subplots
+fig = make_subplots(
+    rows=5, cols=1, 
+    shared_xaxes=True, 
+    vertical_spacing=0,
+    #subplot_titles=("deltaF/F signals", "DA", "slopes", "intercepts", "R2", "p-values")
+)
+
+# Row 1: Raw Signals
+fig.add_trace(go.Scatter(x=time_session_s, y=downharpdf.deltaF_tdtomato, name='tdTomato', line=dict(color='red')), row=1, col=1)
+fig.add_trace(go.Scatter(x=time_session_s, y=downharpdf.deltaF_gfp, name='GFP', line=dict(color='green')), row=1, col=1)
+
+# Row 2: DA Signal
+predicted, model = get_prediction(downharpdf.deltaF_tdtomato, downharpdf.deltaF_gfp)
+da_signal = downharpdf.deltaF_gfp.values - predicted
+fig.add_trace(go.Scatter(x=time_session_s, y=da_signal, name='DA Signal', line=dict(color='blue')), row=2, col=1)
+
+# Rows 3-6: Using np.array(starts)/100
+fig.add_trace(go.Scatter(x=starts_s, y=slopes, name='Slope', line=dict(color='purple')), row=3, col=1)
+fig.add_trace(go.Scatter(x=starts_s, y=intercepts, name='Intercept', line=dict(color='orange')), row=4, col=1)
+fig.add_trace(go.Scatter(x=starts_s, y=r_squareds, name='R2', line=dict(color='teal')), row=5, col=1)
+#fig.add_trace(go.Scatter(x=starts_s, y=p_values, name='p-value', line=dict(color='grey')), row=6, col=1)
+
+
+## comparison with the huber regression slope and intercept (session wide)
+fig.add_hline(y=model.coef_[0], line_dash="dash", line_color="grey", row=3, col=1, name = 'session slope')
+fig.add_hline(y=model.intercept_, line_dash="dash", line_color="grey", row=4, col=1, name = 'session intercept')
+
+
+# 3. Update Axes (Spike lines and Range Selector)
+# We apply matches='x' so all subplots treat the X-axis as one entity
+fig.update_xaxes(
+    showspikes=True,
+    spikemode='across',
+    spikesnap='cursor',
+    spikethickness=1,
+    spikedash='dash',
+    spikecolor="#999999",
+    matches='x' 
+)
+
+fig.update_xaxes(
+    title_text="time (s)",
+    row=5, col=1
+)
+
+fig.update_yaxes(title_text="deltaF/F signal", row=1, col=1)
+fig.update_yaxes(title_text="DA (robust)", row=2, col=1)
+fig.update_yaxes(title_text="slope", row=3, col=1)
+fig.update_yaxes(title_text="intercept", row=4, col=1)
+fig.update_yaxes(title_text="R2", row=5, col=1)
+
+
+
+# 4. Final Layout Adjustments (Hover properties go here!)
+fig.update_layout(
+    height=900,
+    width=1700,
+    title_text=f"{animal} {date} | session wide photometry | sliding window {window_size_s}s, step {step_size_s}s",
+    hovermode='x unified', # Global property
+    hoverdistance=-1,      # Global property
+    template="simple_white",
+    showlegend=True,
+    shapes=shapes + shapes_rwd
+)
+
+#fig.update_layout({ax:{"showspikes":True} for ax in fig.to_dict()["layout"] if ax[0:3]=="xax"})
+
+
+fig.show()
+
+# Save the figure
+fig.write_html(rf"{PATH_SAVE_FIGS}/{animal}_{date}_interactive_regressions.html")
+#%%
+model.coef_
+
+#%%
+
+
+
+#%%
+
+
+
+#%%
+
+#%%
+
+
+
+
+
 # %%
 
 """

@@ -42,8 +42,8 @@ def resample_dlc_to_timebase(dlc_time, dlc_signals, target_time):
     return f(target_time)
 # %%
 
-animal = 'Niobium'
-date = '250624'
+animal = 'Zirconium'
+date = '250429'
 
 PHOTOMETRY_PATH = os.path.join(DROPBOX_TASK_PATH, 'photometry', animal)
 
@@ -90,6 +90,7 @@ bhvdf['trialno'] = bhvdf.index + 1
 
 PATH_STORE_PHOTOMETRY_PICKLES = os.path.join(DROPBOX_TASK_PATH, r'analysis_photometry')
 downharpdf = pd.read_pickle(f'{PATH_STORE_PHOTOMETRY_PICKLES}/{animal}_{date}_kernel_regression_downharpdf.pkl')
+#downharpdf = pd.read_pickle(f'{PATH_STORE_PHOTOMETRY_PICKLES}/{animal}_{date}_downharpdf.pkl')
 
 # %%
 
@@ -147,9 +148,15 @@ PATH_DA_AND_DLC = os.path.join(DROPBOX_TASK_PATH, rf'analysis_photometry/{animal
 if not os.path.exists(PATH_DA_AND_DLC):
     os.makedirs(PATH_DA_AND_DLC)
     
-PATH_DLC_REGRESSION = os.path.join(PATH_DA_AND_DLC, 'implantBase_dlc_regression')
-if not os.path.exists(PATH_DLC_REGRESSION):
-    os.makedirs(PATH_DLC_REGRESSION)
+#PATH_DLC_REGRESSION = os.path.join(PATH_DA_AND_DLC, 'implantBase_dlc_regression')
+#if not os.path.exists(PATH_DLC_REGRESSION):
+#    os.makedirs(PATH_DLC_REGRESSION)
+
+## create folders
+for folder_name in ['full_session_regression', 'session_vs_trial', 'sliding_window_regression']:
+    new_folder = os.path.join(PATH_DA_AND_DLC, folder_name)
+    if not os.path.exists(new_folder):
+        os.makedirs(new_folder)
 
 
 #%%
@@ -487,8 +494,6 @@ convert_timestamp(100, np.arange(duration_bhv), np.arange(duration_dlc))
 
 ## import gpio from camera and ttl from photometry
 
-animal = 'Niobium'
-date = '250624'
 camera_view = 'side'
 
 ftoken_bhv = glob.glob(rf"{DROPBOX_TASK_PATH}\behavior\{animal}\{animal}_**_{date}**")[0]
@@ -505,7 +510,6 @@ ftoken_photometry = glob.glob(rf"{DROPBOX_TASK_PATH}\photometry\{animal}\{animal
 gpiodf = pd.read_csv(ftoken_gpio, names=['ttl', 'frame', 'bla'], header=0)
 gpiodf['frame_session'] = gpiodf.frame - gpiodf.frame[0]
 
-bhvdf = pd.read_pickle(ftoken_pkl)
 in2 = pd.read_csv(ftoken_photometry, header = None)
 in2.columns = ['in2', 'timestamp']
 in2['gpio'] = in2.in2/2**16*20
@@ -605,22 +609,20 @@ ttl_raw_photometry = detect_rising_edge(raw_photometry_ttls, raw_photometry_t)
 
 #%%
 
-ttl_raw_photometry_dropped = np.delete(ttl_raw_photometry,[0,21,40,58])
-ttl_dlc_dropped = np.delete(ttl_dlc, [20,56])
-ttl_frameno_dlc_dropped = np.delete(ttl_frameno_dlc,[20,56])
+## ref trial
+plt.plot(jointdf.trial_duration_harp, color = 'black')
 
-plt.plot(np.diff(ttl_dlc_dropped))
+#ttl_dlc_dropped = np.delete(ttl_dlc,[0])
+#plt.plot(np.diff(ttl_dlc_dropped))
+
+ttl_raw_photometry_dropped = np.delete(ttl_raw_photometry,[0,21,42,63,85])
+ttl_frameno_dlc_dropped = np.delete(ttl_frameno_dlc,[0,21,62])
+
 plt.plot(np.diff(ttl_raw_photometry_dropped))
-plt.plot(jointdf.trial_duration_harp)
-
 plt.plot(np.diff(ttl_frameno_dlc_dropped)/150)
-#%%
 
-(ttl_frameno_dlc_dropped)
 #%%
 plt.plot(ttl_frameno_dlc_dropped,ttl_raw_photometry_dropped,'.')
-#%%
-linregress(ttl_raw_photometry_dropped,ttl_frameno_dlc_dropped)
 #%%
 
 dlcDAdf = pd.DataFrame()
@@ -656,6 +658,7 @@ dlcDAdf['len_tdtomato'] = dlcDAdf.denoised_tdtomato.apply(lambda x: len(x))
 dlcDAdf['len_gfp'] = dlcDAdf.denoised_gfp.apply(lambda x: len(x))
 
 plt.plot(dlcDAdf.len_tdtomato == dlcDAdf.len_gfp)
+plt.title('should be 1')
 #%%
 dlcDAdf['timestamp_trial'] = dlcDAdf.apply(lambda x: np.linspace(0,x.trial_duration_harp,x.len_tdtomato), axis = 1)
 dlcDAdf['frametimes_trial'] = dlcDAdf.apply(lambda x: np.linspace(0,x.trial_duration_harp,x.frame_count), axis = 1)
@@ -670,6 +673,7 @@ for bodypart in ['implantSleeve', 'implantBase', 'snout', 'topL','poke','lever']
 dlcDAdf['len_dlc'] = dlcDAdf.implantBase_y_upsampled.apply(lambda x: len(x))
 
 plt.plot(dlcDAdf.len_tdtomato == dlcDAdf.len_dlc)
+plt.title('should be 1')
 
 
 #%%
@@ -868,8 +872,8 @@ dlcDAdf.get(['trial_duration_arduino', 'trial_duration_harp'])
 .##........########..#######.....##.......##....####.##....##..######..
 """ 
 
-
-for tt in range(0,72):
+## I think this plotting should be trash
+for tt in range(0,len(dlcDAdf)):
 
     fig, axs = plt.subplots(3, tight_layout = True, sharex = True, figsize = (12,6))
 
@@ -907,7 +911,7 @@ for tt in range(0,72):
     figtitle = f'{animal} {date} | trial {tt+1} | full session regression with dlc'
     fig.suptitle(figtitle)
 
-    plt.savefig(rf"D:\Learning Lab Dropbox\Learning Lab Team Folder\Patlab protocols\Data\FIClickRwd\analysis_photometry\Niobium_250624\DA_and_dlc\full_session_regression\{figtitle.replace('|', '_')}.png", dpi = 300)
+    plt.savefig(rf"{PATH_DA_AND_DLC}\full_session_regression\{figtitle.replace('|', '_')}.png", dpi = 300)
     plt.close()
 
 #%%
@@ -932,21 +936,16 @@ using the derivative to do the regression
 
 """
 
-dlcDAdf.keys()
-
-#%%
-
 ## angle
 for bodypart in ['implantSleeve', 'implantBase']:
     coord_dlc_interpolated = nancoords_full[bodypart]['x'].interpolate(method = 'linear').bfill().ffill().values
     dlcDAdf[f'{bodypart}_x'] = np.split(coord_dlc_interpolated,split_idx)[1:-1]
-#%%
+
 for bodypart in ['implantSleeve', 'implantBase']:
     dlcDAdf[f'{bodypart}_x_upsampled'] = dlcDAdf.apply(lambda x: resample_dlc_to_timebase(x.frametimes_trial, x[f'{bodypart}_x'], x.timestamp_trial), axis = 1)
-#%%
+
 dy = dlcDAdf.implantSleeve_y_upsampled - dlcDAdf.implantBase_y_upsampled
 dx = dlcDAdf.implantSleeve_x_upsampled - dlcDAdf.implantBase_x_upsampled
-
 #%%
 
 tt = 21
@@ -967,7 +966,6 @@ plt.plot(5+zscore(tdtomato_trial), color = 'red')
 plt.plot(5+zscore(gfp_trial), color = 'green')
 
 #%%
-
 
 scaler = StandardScaler()
 X = scaler.fit_transform(np.column_stack([tdtomato_trial,
@@ -1032,7 +1030,6 @@ plt.tight_layout()
 plt.show()
 #%%
 
-
 """
 .########.##.....##.##.......##...........######..########..######...######..####..#######..##....##
 .##.......##.....##.##.......##..........##....##.##.......##....##.##....##..##..##.....##.###...##
@@ -1050,11 +1047,11 @@ now using the position, derivative and implant angle as predictors in the full s
 dlcDAdf['last_position'] = dlcDAdf.implantSleeve_y_upsampled.apply(lambda x: x[-1])
 position_0 = dlcDAdf.implantSleeve_y_upsampled[0][0]
 dlcDAdf['previous_last_position'] = np.hstack([position_0, dlcDAdf.last_position.values[:-1]])
-#%%
+
 dlcDAdf['extra_dim_position'] = dlcDAdf.apply(lambda x: np.hstack([x.previous_last_position, x.implantSleeve_y_upsampled]), axis = 1)
-#%%
+
 dlcDAdf['implantSleeve_y_deriv'] = dlcDAdf.extra_dim_position.apply(lambda x: np.diff(x))
-#%%
+
 dlcDAdf['dy'] = dlcDAdf.apply(lambda x: x.implantSleeve_y_upsampled - x.implantBase_y_upsampled, axis = 1)
 dlcDAdf['dx'] = dlcDAdf.apply(lambda x: x.implantSleeve_x_upsampled - x.implantBase_x_upsampled, axis = 1)
 
@@ -1069,8 +1066,8 @@ pos_full = np.hstack(dlcDAdf.implantSleeve_y_upsampled.values)
 derivative_full = np.hstack(dlcDAdf.implantSleeve_y_deriv.values)
 angle_full = np.hstack(dlcDAdf.implant_angle.values)
 
-#%%
 
+#%%
 scaler = StandardScaler()
 X = scaler.fit_transform(np.column_stack([tdtomato_full[:15000],
                                         pos_full[:15000],
@@ -1118,8 +1115,9 @@ plt.show()
 DA_full_dlc = gfp_full[:15000] - res.fittedvalues
 #%%
 tt = 2
-plt.plot(zscore(np.split(DA_full_dlc,split_idx_harp)[tt]), lw = 1, alpha = 0.5)
-plt.plot(zscore(dlcDAdf.DA_tdtomato_base[tt]), lw = 1, alpha = 0.5)
+plt.plot(zscore(np.split(DA_full_dlc,split_idx_harp)[tt]), lw = 1, alpha = 0.5, label = 'with dlc')
+plt.plot(zscore(dlcDAdf.DA_tdtomato_base[tt]), lw = 1, alpha = 0.5, label = 'without dlc')
+plt.legend()
 #%%
 
 plt.plot(DA_full_dlc)
@@ -1158,7 +1156,7 @@ dlcDAdf['DA_dlc_trial_conf_ints'] = dlcDAdf.DA_dlc_trial_all.apply(lambda x: x[2
 #%%
 
 plt.axhline(0, color = 'grey', ls = '--')
-for ii in range(72):
+for ii in range(len(dlcDAdf)):
     plt.plot(dlcDAdf.DA_dlc_trial_betas[ii][1:], '.')
 #%%
 
@@ -1172,7 +1170,7 @@ for ii in range(72):
 .##........########..#######.....##...
 """
 
-for tt in range(73):
+for tt in range(len(dlcDAdf)):
 
     fig, axs = plt.subplots(4, tight_layout = True, figsize = (12,8), sharex = True)
 
@@ -1213,30 +1211,23 @@ for tt in range(73):
     figtitle = f'{animal} {date} | trial {tt+1} | trial vs full session | dlc vs no dlc'
     fig.suptitle(figtitle)
 
-    plt.savefig(rf"D:\Learning Lab Dropbox\Learning Lab Team Folder\Patlab protocols\Data\FIClickRwd\analysis_photometry\Niobium_250624\DA_and_dlc\session_vs_trial\{figtitle.replace('|', '_')}.png", dpi = 300)
+    plt.savefig(rf"{PATH_DA_AND_DLC}\session_vs_trial\{figtitle.replace('|', '_')}.png", dpi = 300)
     plt.close()
 
 #%%
 
 plt.plot(np.hstack(dlcDAdf.DA_dlc_trial.values),np.hstack(dlcDAdf.DA_tdtomato_base.values), '.')
 
-
-
-
 #%%
 tt = 18
-plt.plot(dlcDAdf.DA_dlc_trial[tt])
-plt.plot(-.2+dlcDAdf.DA_tdtomato_base[tt])
-
+plt.plot(dlcDAdf.DA_dlc_trial[tt], label = 'trial with dlc')
+plt.plot(-.2+dlcDAdf.DA_tdtomato_base[tt], label = 'session without dlc')
+plt.legend()
 
 #%%
 all_new_DA = np.hstack(dlcDAdf.DA_dlc_trial.values)
 
-#%%
-
 time_all_session = np.linspace(dlcDAdf.trial_start_harp.values[0], dlcDAdf.trial_end_harp.values[-1], len(all_new_DA))
-
-
 snippsDA, _ = signal2eventsnippets(time_all_session, all_new_DA, dlcDAdf.trial_start_harp.values, [-2,2], .01)
 
 
@@ -1351,8 +1342,6 @@ print(f"Final dopamine signal length after correction: {len(final_dopamine_signa
 
 #%%
 
-time_all_session = np.linspace(dlcDAdf.trial_start_harp.values[0], dlcDAdf.trial_end_harp.values[-1], len(all_new_DA))
-
 snipps, _ = signal2eventsnippets(time_all_session, final_dopamine_signal, dlcDAdf.trial_start_harp.values, [-2,2], .01)
 
 #%%
@@ -1379,8 +1368,9 @@ dlcDAdf['DA_movingwindows'] = np.split(final_dopamine_signal, split_idx_harp)
 #%%
 tt = 42
 plt.figure(figsize = (12,4))
-plt.plot(6+zscore(dlcDAdf.DA_movingwindows[tt]), lw = .5)
-plt.plot(zscore(dlcDAdf.DA_qr[tt]), lw = .5)
+plt.plot(6+zscore(dlcDAdf.DA_movingwindows[tt]), lw = .5, label = 'dlc moving window')
+plt.plot(zscore(dlcDAdf.DA_qr[tt]), lw = .5, label = 'session qr')
+plt.legend()
 #%%
 """
 .########..##........#######..########
@@ -1392,7 +1382,7 @@ plt.plot(zscore(dlcDAdf.DA_qr[tt]), lw = .5)
 .##........########..#######.....##...
 """
 
-for tt in range(72):
+for tt in range(len(dlcDAdf)):
 
     fig, axs = plt.subplots(4, tight_layout = True, figsize = (12,8), sharex = True)
 
@@ -1428,22 +1418,16 @@ for tt in range(72):
     figtitle = f'{animal} {date} | trial {tt+1} | moving windows regression | vs trial or vs session'
     fig.suptitle(figtitle)
 
-    plt.savefig(rf"D:\Learning Lab Dropbox\Learning Lab Team Folder\Patlab protocols\Data\FIClickRwd\analysis_photometry\Niobium_250624\DA_and_dlc\sliding_window_regression\{figtitle.replace('|', '_')}.png", dpi = 300)
+    plt.savefig(rf"{PATH_DA_AND_DLC}\sliding_window_regression\{figtitle.replace('|', '_')}.png", dpi = 300)
     plt.close()
 # %%
 
 bhvdf['cp_abs'] = bhvdf.cp+bhvdf.trial_start
-#%%
-
-bhvdf.cp_abs
-# %%
 dlcDAdf['cp_abs'] = dlcDAdf.trial_start_harp + bhvdf.cp
 dlcDAdf['lever_abs'] = dlcDAdf.trial_start_harp + bhvdf.lever_rel/1000
 dlcDAdf['rwd_lever_abs'] = dlcDAdf.lever_abs.apply(lambda x: x[-1])
 dlcDAdf['nonrwd_lever_abs'] = dlcDAdf.lever_abs.apply(lambda x: x[x!=x[-1]])
 
-# %%
-dlcDAdf.cp_abs.dropna().values
 #%%
 
 snipps_cp, alignment_cp = signal2eventsnippets(time_all_session, final_dopamine_signal, dlcDAdf.cp_abs.dropna().values, [-10,10], .01)
@@ -1465,8 +1449,6 @@ snipps_nonrwd_lvrs, _ = signal2eventsnippets(time_all_session, final_dopamine_si
 plt.plot(np.nanmean(snipps_rwd_lvrs, axis = 0))
 plt.plot(np.nanmean(snipps_nonrwd_lvrs, axis = 0))
 
-# %%
-np.hstack(dlcDAdf.lvr_abs.values)
 # %%
 tt = 37
 
@@ -1501,6 +1483,20 @@ dlcDAdf.to_pickle(rf'{PATH_STORE_PHOTOMETRY_PICKLES}/{animal}_{date}_dlcDAdf.pkl
 
 #%%
 
+#%%
+
+"""
+.########..########....###....##..........########..####.########...#######.
+.##.....##.##.........##.##...##..........##.....##..##..##.....##.##.....##
+.##.....##.##........##...##..##..........##.....##..##..##.....##.......##.
+.########..######...##.....##.##..........##.....##..##..########......###..
+.##...##...##.......#########.##..........##.....##..##..##...........##....
+.##....##..##.......##.....##.##..........##.....##..##..##.................
+.##.....##.########.##.....##.########....########..####.##...........##....
+
+compare lever presses that happen after rearing up vs when the animal is already up
+if the "dip" is present in both, it points towards this being a feature
+"""
 ## by hand for trial 38 (tt=37) Niobium 250624
 
 lever_index_alreadyup = [1,2,3,4,5,6,7,10,11,12,13,15,16,17,18,19,20,21,22,23,24,25,27]
@@ -1528,4 +1524,53 @@ plt.plot(dlcDAdf.implantSleeve_y_deriv[tt])
 plt.axhline(10)
 # %%
 dlcDAdf.implantSleeve_y_deriv[tt] == 10
+# %%
+
+"""
+....###....##.......########.########.########..##....##....###....########.####.##.....##.########
+...##.##...##..........##....##.......##.....##.###...##...##.##......##.....##..##.....##.##......
+..##...##..##..........##....##.......##.....##.####..##..##...##.....##.....##..##.....##.##......
+.##.....##.##..........##....######...########..##.##.##.##.....##....##.....##..##.....##.######..
+.#########.##..........##....##.......##...##...##..####.#########....##.....##...##...##..##......
+.##.....##.##..........##....##.......##....##..##...###.##.....##....##.....##....##.##...##......
+.##.....##.########....##....########.##.....##.##....##.##.....##....##....####....###....########
+
+try to regress out the dlc from tdtomato and from gfp first, and then use the regression for DA
+
+(I don't really think this makes sense)
+"""
+
+animal = 'Niobium'
+date = '250617'
+dlcDAdf = pd.read_pickle(rf'{PATH_STORE_PHOTOMETRY_PICKLES}/{animal}_{date}_dlcDAdf.pkl')
+
+# %%
+
+tdtomato_full = np.hstack(dlcDAdf.denoised_tdtomato.values)
+gfp_full = np.hstack(dlcDAdf.denoised_gfp.values)
+
+# %%
+angle_full = np.hstack(dlcDAdf.implant_angle.values)
+# %%
+
+do_dlc_regression(np.vstack([tdtomato_full,
+                             angle_full]),
+                             gfp_full)
+
+#%%
+
+tdtomato_minus_angle = tdtomato_full - quantile_regression(angle_full, tdtomato_full)
+# %%
+gfp_minus_angle = gfp_full - quantile_regression(angle_full, gfp_full)
+
+# %%
+plt.plot(tdtomato_minus_angle)
+plt.plot(gfp_minus_angle)
+plt.xlim(0,10000)
+# %%
+DA_minus_angle = gfp_minus_angle - quantile_regression(tdtomato_minus_angle, gfp_minus_angle)
+# %%
+plt.plot(zscore(DA_minus_angle), lw = 0.5)
+plt.plot(-2+zscore(np.hstack(dlcDAdf.DA_qr.values)), lw = 0.5)
+plt.xlim(60*100,130*100)
 # %%
