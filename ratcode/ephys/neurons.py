@@ -21,13 +21,13 @@ agg_blocks_FI_dic = {
 color_FI_blocks = list(agg_blocks_FI_dic.values())
 
 from scipy.signal import lfilter
-import spikeinterface.full as si
-import spikeinterface.extractors as se
-import spikeinterface.preprocessing as spre
-import spikeinterface.sorters as ss
-import spikeinterface.qualitymetrics as sqm
-import spikeinterface.exporters as sexp
-import spikeinterface.widgets as sw
+#import spikeinterface.full as si
+#import spikeinterface.extractors as se
+#import spikeinterface.preprocessing as spre
+#import spikeinterface.sorters as ss
+#import spikeinterface.qualitymetrics as sqm
+#import spikeinterface.exporters as sexp
+#import spikeinterface.widgets as sw
 
 
 import warnings
@@ -162,6 +162,26 @@ def define_all_paths(animal, date, bool_ibl_drift = False, bool_raw_ephys = Fals
 .##.......##.....##.##...###.##....##....##.....##..##.....##.##...###.##....##
 .##........#######..##....##..######.....##....####..#######..##....##..######.
 """
+
+def drop_nan_rows_in_matrix(matrix):
+    """
+    Remove any rows from a NumPy array that contain NaN values.
+
+    Parameters
+    ----------
+    matrix : np.ndarray
+        Input 2D array.
+
+    Returns
+    -------
+    np.ndarray
+        Array with rows containing NaNs removed.
+    """
+    if not isinstance(matrix, np.ndarray):
+        matrix = np.array(matrix)
+
+    mask = ~np.isnan(matrix).any(axis=1)
+    return matrix[mask]
 
 def detect_rising_edges(arr):
     # Ensure it's a 1D array

@@ -26,15 +26,15 @@ from ratcode.behavior import change_point
 from ratcode.init import setup
 setup()
 # %%
-animal = 'Ruthenium'
-date = '251219'
+animal = 'Palladium'
+date = '260108'
 
 THIS_PICKLE_PATH = glob.glob(rf"{PATH_STORE_PICKLES}\{animal}_{date}*.pkl")[0]
 
 df = pd.read_pickle(THIS_PICKLE_PATH)
 
-plt.plot(df.trial_duration)
-sns.histplot(x = np.hstack(df.first_press_s.values))#, hue = 'FI')
+
+#sns.histplot(x = np.hstack(df.first_press_s.values))#, hue = 'FI')
 
 if df.bool_block[0]:
     df = df[df.lever_rel.apply(lambda x: len(x)) != 0]
@@ -53,6 +53,10 @@ df['cp'] = df.apply(lambda x: np.nan if (x.count_lever < 3 or x.cp_after_FI) els
 df['bool_cp'] = ~df.cp.isna()
 df['cp_normalised'] = df.cp/df.FI
 
+
+plt.plot(df.trial_duration/1000)
+plt.plot(df.FI)
+plt.ylabel('trial duration (s)')
 #%%
 exp = determine_experiment(df)
 
@@ -77,6 +81,7 @@ sns.scatterplot(ax = axs[1,0], data = df.explode('lever_rel_s'), y = 'trialno', 
 sns.histplot(ax = axs[0,1], data = df, x = 'cp_normalised', hue = 'FI',
              palette = color_FI_blocks, element = 'step', stat = 'density', common_norm=False)
 
+sns.scatterplot(ax = axs[1,0], data = df, x = 'FI', y = 'trialno', marker = '|')
 
 axs[-1,0].set_xlabel('time since reward (s)')
 axs[-1,0].set_xlim(0,70)

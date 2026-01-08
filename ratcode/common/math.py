@@ -101,3 +101,23 @@ def drop_nans_matrix(matrix):
 
 def drop_nans_array(array):
     return array[~np.isnan(array)]
+
+def drop_nan_rows_in_matrix(matrix):
+    """
+    Remove any rows from a NumPy array that contain NaN values.
+
+    Parameters
+    ----------
+    matrix : np.ndarray
+        Input 2D array.
+
+    Returns
+    -------
+    np.ndarray
+        Array with rows containing NaNs removed.
+    """
+    if not isinstance(matrix, np.ndarray):
+        matrix = np.array(matrix)
+
+    mask = ~np.isnan(matrix).any(axis=1)
+    return matrix[mask]
