@@ -27,7 +27,7 @@ from ratcode.init import setup
 setup()
 # %%
 animal = 'Palladium'
-date = '260108'
+date = '260204'
 
 THIS_PICKLE_PATH = glob.glob(rf"{PATH_STORE_PICKLES}\{animal}_{date}*.pkl")[0]
 

@@ -43,7 +43,7 @@ def resample_dlc_to_timebase(dlc_time, dlc_signals, target_time):
 # %%
 
 animal = 'Zirconium'
-date = '250429'
+date = '250425'
 
 PHOTOMETRY_PATH = os.path.join(DROPBOX_TASK_PATH, 'photometry', animal)
 
@@ -615,11 +615,11 @@ plt.plot(jointdf.trial_duration_harp, color = 'black')
 #ttl_dlc_dropped = np.delete(ttl_dlc,[0])
 #plt.plot(np.diff(ttl_dlc_dropped))
 
-ttl_raw_photometry_dropped = np.delete(ttl_raw_photometry,[0,21,42,63,85])
-ttl_frameno_dlc_dropped = np.delete(ttl_frameno_dlc,[0,21,62])
+ttl_raw_photometry_dropped = np.delete(ttl_raw_photometry,[0])
+ttl_frameno_dlc_dropped = np.delete(ttl_frameno_dlc,[64])
 
 plt.plot(np.diff(ttl_raw_photometry_dropped))
-plt.plot(np.diff(ttl_frameno_dlc_dropped)/150)
+#plt.plot(np.diff(ttl_frameno_dlc_dropped)/150)
 
 #%%
 plt.plot(ttl_frameno_dlc_dropped,ttl_raw_photometry_dropped,'.')

@@ -96,8 +96,8 @@ def constrained_ica(X, reference, mu=0.5):
 .##.....##.##....##.####.##.....##.##.....##.########.########..##.....##....##....########
 """
 
-animal = 'Niobium'
-date = '250624'
+animal = 'Palladium'
+date = '260202'
 PHOTOMETRY_PATH = os.path.join(DROPBOX_TASK_PATH, 'photometry', animal)
 
 PATH_SAVE_FIGS = os.path.join(DROPBOX_TASK_PATH, 'analysis_photometry', f'{animal}_{date}')
@@ -221,12 +221,22 @@ F0_gfp = np.nanquantile(downharpdf.clean_poly_gfp,.1)
 downharpdf['deltaF_poly_tdtomato'] = (downharpdf.clean_poly_tdtomato - F0_tdtomato)/F0_tdtomato
 downharpdf['deltaF_poly_gfp'] = (downharpdf.clean_poly_gfp - F0_gfp)/F0_gfp
 
-downharpdf['predicted_poly_gfp_session'] = get_prediction(downharpdf.deltaF_poly_tdtomato, downharpdf.deltaF_poly_gfp)[0]
+downharpdf['predicted_poly_gfp_session'] = get_prediction(downharpdf.deltaF_poly_tdtomato, downharpdf.deltaF_poly_gfp)
 downharpdf['DA_poly_session'] = downharpdf.deltaF_poly_gfp - downharpdf.predicted_poly_gfp_session
 
 
 downharpdf['deltaF_tdtomato'] = downharpdf['deltaF_poly_tdtomato']
 downharpdf['deltaF_gfp'] = downharpdf['deltaF_poly_gfp']
+#%%
+
+plt.plot(downharpdf.deltaF_poly_tdtomato, color = 'red')
+plt.plot(downharpdf.deltaF_poly_gfp, color = 'green')
+
+#%%
+
+plt.plot(downharpdf.DA_poly_session)
+
+
 
 # %%
 
@@ -319,7 +329,8 @@ downharpdf['dlight_pure'] = dlight_pure
 ## again, almost full repetition from photometry_interactive
 ## new part is the ICA column
 
-jointdf = group_and_listify(downharpdf, 'trialno', ['timestamp_session', 'deltaF_tdtomato', 'deltaF_gfp','DA_poly_session','ICA_0','ICA_1', 'constrained_ICA_dlight','constrained_ICA_motion', 'motion_pure', 'dlight_pure'])
+jointdf = group_and_listify(downharpdf, 'trialno', ['timestamp_session', 'deltaF_tdtomato', 'deltaF_gfp','DA_poly_session',#'ICA_0','ICA_1', 'constrained_ICA_dlight','constrained_ICA_motion',
+                                                    'motion_pure', 'dlight_pure'])
 
 jointdf['trial_start_harp'] = jointdf.timestamp_session.apply(lambda x: x[0])
 jointdf['trial_end_harp'] = jointdf.timestamp_session.apply(lambda x: x[-1])
@@ -435,9 +446,9 @@ snipps_cICA_dlight_nonrwd, _ = signal2eventsnippets(downharpdf.timestamp_session
 snipps_cICA_motion_nonrwd, _ = signal2eventsnippets(downharpdf.timestamp_session, downharpdf.constrained_ICA_motion,
                                 np.hstack(jointdf.nonrwd_lever_abs.values), [-4,4], .01)
 
-
+#%%
 ### regular regression for comparison
-snipps_DA_cp, _ = signal2eventsnippets(downharpdf.timestamp_session, downharpdf.DA_poly_session,
+snipps_DA_cp, time = signal2eventsnippets(downharpdf.timestamp_session, downharpdf.DA_poly_session,
                                 np.hstack(jointdf.cp_abs.values), [-4,4], .01)
 snipps_DA_rwd, _ = signal2eventsnippets(downharpdf.timestamp_session, downharpdf.DA_poly_session,
                                 np.hstack(jointdf.rwd_lever_abs.values), [-4,4], .01)
@@ -457,28 +468,29 @@ snipps_NMFmotion_rwd, _ = signal2eventsnippets(downharpdf.timestamp_session, dow
                                 np.hstack(jointdf.rwd_lever_abs.values), [-4,4], .01)
 snipps_NMFmotion_nonrwd, _ = signal2eventsnippets(downharpdf.timestamp_session, downharpdf.motion_pure,
                                 np.hstack(jointdf.nonrwd_lever_abs.values), [-4,4], .01)
+
 #%%
 fig, axs = plt.subplots(4,3, tight_layout = True, figsize = (12,10), sharey = 'row', sharex = True)
 
-axs[0,0].plot(time, np.nanmean(snipps_0_cp, axis = 0), color = 'blue', lw = 1)
-axs[0,0].plot(time, np.nanmean(snipps_1_cp, axis = 0), color = 'orange', lw = 1)
-
-axs[0,1].plot(time, np.nanmean(snipps_0_nonrwd, axis = 0), color = 'blue', lw = 1)
-axs[0,1].plot(time, np.nanmean(snipps_1_nonrwd, axis = 0), color = 'orange', lw = 1)
-
-axs[0,2].plot(time, np.nanmean(snipps_0_rwd, axis = 0), color = 'blue', lw = 1)
-axs[0,2].plot(time, np.nanmean(snipps_1_rwd, axis = 0), color = 'orange', lw = 1)
-
-# constrainted ICA
-axs[1,0].plot(time, np.nanmean(snipps_cICA_dlight_cp, axis = 0), color = 'blue', lw = 1)
-axs[1,0].plot(time, np.nanmean(snipps_cICA_motion_cp, axis = 0), color = 'orange', lw = 1)
-
-axs[1,1].plot(time, np.nanmean(snipps_cICA_dlight_nonrwd, axis = 0), color = 'blue', lw = 1)
-axs[1,1].plot(time, np.nanmean(snipps_cICA_motion_nonrwd, axis = 0), color = 'orange', lw = 1)
-
-axs[1,2].plot(time, np.nanmean(snipps_cICA_dlight_rwd, axis = 0), color = 'blue', lw = 1, label = 'DA')
-axs[1,2].plot(time, np.nanmean(snipps_cICA_motion_rwd, axis = 0), color = 'orange', lw = 1, label = 'motion')
-axs[1,2].legend(frameon = False)
+#axs[0,0].plot(time, np.nanmean(snipps_0_cp, axis = 0), color = 'blue', lw = 1)
+#axs[0,0].plot(time, np.nanmean(snipps_1_cp, axis = 0), color = 'orange', lw = 1)
+#
+#axs[0,1].plot(time, np.nanmean(snipps_0_nonrwd, axis = 0), color = 'blue', lw = 1)
+#axs[0,1].plot(time, np.nanmean(snipps_1_nonrwd, axis = 0), color = 'orange', lw = 1)
+#
+#axs[0,2].plot(time, np.nanmean(snipps_0_rwd, axis = 0), color = 'blue', lw = 1)
+#axs[0,2].plot(time, np.nanmean(snipps_1_rwd, axis = 0), color = 'orange', lw = 1)
+#
+## constrainted ICA
+#axs[1,0].plot(time, np.nanmean(snipps_cICA_dlight_cp, axis = 0), color = 'blue', lw = 1)
+#axs[1,0].plot(time, np.nanmean(snipps_cICA_motion_cp, axis = 0), color = 'orange', lw = 1)
+#
+#axs[1,1].plot(time, np.nanmean(snipps_cICA_dlight_nonrwd, axis = 0), color = 'blue', lw = 1)
+#axs[1,1].plot(time, np.nanmean(snipps_cICA_motion_nonrwd, axis = 0), color = 'orange', lw = 1)
+#
+#axs[1,2].plot(time, np.nanmean(snipps_cICA_dlight_rwd, axis = 0), color = 'blue', lw = 1, label = 'DA')
+#axs[1,2].plot(time, np.nanmean(snipps_cICA_motion_rwd, axis = 0), color = 'orange', lw = 1, label = 'motion')
+#axs[1,2].legend(frameon = False)
 
 ## regression DA for comparison
 axs[2,0].plot(time, np.nanmean(snipps_DA_cp, axis = 0), color = 'purple', lw = 1)
@@ -517,6 +529,10 @@ fig.savefig(rf'{PATH_SAVE_ICA}\{figtitle.replace('|','_')}.png', dpi = 300)
 jointdf.to_pickle(rf'{PATH_SAVE_ICA}\jointdf_{animal}_{date}_photometry_ICA.pkl')
 # %%
 
+plt.imshow(snipps_DA_rwd, aspect = 'auto')
 
 
 
+# %%
+jointdf.keys()
+# %%
