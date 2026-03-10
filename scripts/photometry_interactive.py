@@ -66,8 +66,8 @@ def get_prediction(X,y): ## need to allow this to have NaNs
 .##.....##.##....##.####.##.....##.##.....##.########.########..##.....##....##....########
 """
 
-animal = 'Krypton'
-date = '240823'
+animal = 'Ruthenium'
+date = '260225'
 
 PHOTOMETRY_PATH = os.path.join(DROPBOX_TASK_PATH, 'photometry', animal)
 
@@ -316,7 +316,15 @@ jointdf['t_trial_harp'] = jointdf.apply(lambda x: np.hstack(x.timestamp_session)
 jointdf['lever_abs_harp'] = jointdf.apply(lambda x: x.lever_rel_harp + x.trial_start_harp, axis = 1)
 
 
-
+"""
+.########.####..######......##.....##.########.##.....##.##......
+.##........##..##....##.....##.....##....##....###...###.##......
+.##........##..##...........##.....##....##....####.####.##......
+.######....##..##...####....#########....##....##.###.##.##......
+.##........##..##....##.....##.....##....##....##.....##.##......
+.##........##..##....##.....##.....##....##....##.....##.##......
+.##.......####..######......##.....##....##....##.....##.########
+"""
 # 1. Define time axis
 time_session_s = downharpdf.timestamp_session.values
 starts_s = time_session_s[0] + np.array(starts) / 100 + window_size_s/2  # Centering the time points

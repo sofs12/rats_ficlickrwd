@@ -1,4 +1,3 @@
-#%%
 import sys
 from pathlib import Path
 
@@ -10,88 +9,116 @@ if str(PROJECT_ROOT) not in sys.path:
 
 print("Project root on sys.path:", PROJECT_ROOT)
 
-# %%
+
 import os
 import glob
+import argparse
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import seaborn as sns
 
-from ratcode.config.paths import PATH_STORE_PICKLES, DROPBOX_TASK_PATH
+from ratcode.config.paths import PATH_STORE_PICKLES, DROPBOX_TASK_PATH, PATH_BHV_ANALYSIS
 from ratcode.common.logging import determine_experiment
 from ratcode.common.colorcodes import *
 from ratcode.behavior import change_point
 
 from ratcode.init import setup
-setup()
-# %%
-animal = 'Palladium'
-date = '260204'
-
-THIS_PICKLE_PATH = glob.glob(rf"{PATH_STORE_PICKLES}\{animal}_{date}*.pkl")[0]
-
-df = pd.read_pickle(THIS_PICKLE_PATH)
 
 
-#sns.histplot(x = np.hstack(df.first_press_s.values))#, hue = 'FI')
+def main():
+    parser = argparse.ArgumentParser(description='Generate daily summary plots for a given animal and date')
+    parser.add_argument('animal', type=str, help='Name of the animal (e.g. Ruthenium)')
+    parser.add_argument('date', type=str, help='Date of the session format yymmdd (e.g. 260225)')
+    args = parser.parse_args()
+    animal = args.animal
+    date = args.date
 
-if df.bool_block[0]:
-    df = df[df.lever_rel.apply(lambda x: len(x)) != 0]
-    df.reset_index(inplace = True, drop = True)
-    df.trialno = df.index+1
-
-df['FI'] = (df.FI/1000).astype(int)
-
-df['lever_rel_s'] = df.lever_rel.apply(lambda x: x/1000)
-
-df['cp'] = df.trialno.apply(lambda x: change_point.accepted_cp_Gallistel(x,2,df,'lever_rel',True)[0])
-   
-df['count_lever'] = df.lever_rel.apply(lambda x: len(x))
-df['cp_after_FI'] = df.cp > df.FI
-df['cp'] = df.apply(lambda x: np.nan if (x.count_lever < 3 or x.cp_after_FI) else x.cp, axis = 1)
-df['bool_cp'] = ~df.cp.isna()
-df['cp_normalised'] = df.cp/df.FI
+    setup()
 
 
-plt.plot(df.trial_duration/1000)
-plt.plot(df.FI)
-plt.ylabel('trial duration (s)')
-#%%
-exp = determine_experiment(df)
+    #animal = 'Ruthenium'
+    #date = '260225'
 
-figtitle = f'{animal} {date} | experiment {exp}'
+    THIS_PICKLE_PATH = glob.glob(rf"{PATH_STORE_PICKLES}\{animal}_{date}*.pkl")[0]
 
+    df = pd.read_pickle(THIS_PICKLE_PATH)
 
-fig, axs = plt.subplots(2,3, figsize = (10,10), facecolor='w', tight_layout = True, sharex = 'col')
-#plt.figure(figsize = (20,10), facecolor='w', tight_layout = True)
+    if df.bool_block[0]:
+        df = df[df.lever_rel.apply(lambda x: len(x)) != 0]
+        df.reset_index(inplace = True, drop = True)
+        df.trialno = df.index+1
 
-plt.suptitle(figtitle)
-
-#gs = plt.GridSpec(1,2)
-
-#plt.show()
-
-sns.histplot(ax = axs[0,0], data = df, x = 'cp', hue = 'FI',
-             palette = color_FI_blocks, element = 'step', stat = 'density', common_norm=False)
-
-sns.scatterplot(ax = axs[1,0], data = df.explode('lever_rel_s'), y = 'trialno', x = 'lever_rel_s',
-                color = 'grey', s = 10)
-
-sns.histplot(ax = axs[0,1], data = df, x = 'cp_normalised', hue = 'FI',
-             palette = color_FI_blocks, element = 'step', stat = 'density', common_norm=False)
-
-sns.scatterplot(ax = axs[1,0], data = df, x = 'FI', y = 'trialno', marker = '|')
-
-axs[-1,0].set_xlabel('time since reward (s)')
-axs[-1,0].set_xlim(0,70)
+    df['FI'] = (df.FI/1000).astype(int)
+    df['lever_rel_s'] = df.lever_rel.apply(lambda x: x/1000)
+    df['cp'] = df.trialno.apply(lambda x: change_point.accepted_cp_Gallistel(x,2,df,'lever_rel',True)[0])
+    df['count_lever'] = df.lever_rel.apply(lambda x: len(x))
+    df['cp_after_FI'] = df.cp > df.FI
+    df['cp'] = df.apply(lambda x: np.nan if (x.count_lever < 3 or x.cp_after_FI) else x.cp, axis = 1)
+    df['bool_cp'] = ~df.cp.isna()
+    df['cp_normalised'] = df.cp/df.FI
 
 
-plt.savefig(rf'{DROPBOX_TASK_PATH}/analysis_plots/daily_reports/{figtitle.replace('|','_')}.png', transparent = False)
+    #plt.plot(df.trial_duration/1000)
+    #plt.plot(df.FI)
+    #plt.ylabel('trial duration (s)')
+
+    exp = determine_experiment(df)
+    figtitle = f'{animal} {date} | experiment {exp}'
+
+    if exp == 'c':
+        color_palette = color_rwd_blocks
+        hue_param = 'n_protocols'
+
+    else:
+        color_palette = color_FI_blocks
+        hue_param = 'FI'
+
+    fig, axs = plt.subplots(2,3, figsize = (10,10), facecolor='w', tight_layout = True, sharex = 'col')
+    #plt.figure(figsize = (20,10), facecolor='w', tight_layout = True)
+
+    plt.suptitle(figtitle)
+
+    sns.histplot(ax = axs[0,0], data = df, x = 'cp', hue = hue_param,
+                 palette = color_palette, element = 'step', stat = 'density', common_norm=False)
+
+    sns.scatterplot(ax = axs[1,0], data = df.explode('lever_rel_s'), y = 'trialno', x = 'lever_rel_s',
+                    color = 'grey', s = 10)
+
+    sns.histplot(ax = axs[0,1], data = df, x = 'cp_normalised', hue = hue_param,
+                 palette = color_palette, element = 'step', stat = 'density', common_norm=False)
+
+    sns.scatterplot(ax = axs[1,0], data = df, x = 'FI', y = 'trialno', hue = hue_param, marker = '|', palette=color_palette)
+
+    axs[-1,0].set_xlabel('time since reward (s)')
+    if exp == 'c':
+        axs[-1,0].set_xlim(0,35)
+    else:
+        axs[-1,0].set_xlim(0,70)
 
 
+    plt.savefig(rf'{PATH_BHV_ANALYSIS}/{animal}/{figtitle.replace('|','_')}.png', transparent = False)
+    plt.show()
 
-#%%
+    print(f'Daily bhv summary for {animal} on {date} saved to {PATH_BHV_ANALYSIS}')
+
+
+if __name__ == "__main__":
+    main()
+
+
+"""
+.########.########.....###.....######..##.....##
+....##....##.....##...##.##...##....##.##.....##
+....##....##.....##..##...##..##.......##.....##
+....##....########..##.....##..######..#########
+....##....##...##...#########.......##.##.....##
+....##....##....##..##.....##.##....##.##.....##
+....##....##.....##.##.....##..######..##.....##
+
+to redo / add
+
+
 def align_lvr_on_cp(cp, lvr_array, exclude_zero = True):
 
     if np.isnan(cp):
@@ -282,3 +309,4 @@ def produce_daily_fig_BLOCKS():
     plt.savefig(rf'{dropbox_path}/analysis_plots/daily_reports/{figtitle.replace('|','_')}.png', transparent = False)
 
 # %%
+"""

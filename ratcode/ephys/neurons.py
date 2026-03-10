@@ -85,22 +85,23 @@ cmap_FI = ListedColormap(list(color_FI_blocks))
 cmap_nprots = ListedColormap(list(color_nprots_blocks))
 
 
-def compute_alignments(syncdf, bool_click): # might need readjusting for no click sessions, needs testing
+def compute_alignments(syncdf, bool_click, bool_cp_corrected): # might need readjusting for no click sessions, needs testing
     exp = determine_experiment(syncdf)
     #bool_click = (len(np.unique(np.hstack(syncdf.click))) > 1)
 
     lvr = drop_nan(np.hstack(syncdf.lever_npx.values))
-    poke = drop_nan(np.hstack(syncdf.poke_npx.values))
+    #poke = drop_nan(np.hstack(syncdf.poke_npx.values))
     rwd_onset = drop_nan(np.hstack(syncdf.rwd_onset_npx.values))
     cp = drop_nan(np.hstack(syncdf.cp.values))
-    cp_corrected = drop_nan(np.hstack(syncdf.cp_corrected.values))
+    if bool_cp_corrected:
+        cp_corrected = drop_nan(np.hstack(syncdf.cp_corrected.values))
     if bool_click:
         click_onset = drop_nan(np.hstack(syncdf.click.values))
     rwd_offset = drop_nan(np.hstack(syncdf.query('trial_duration_s > 2').npx_time.values))
 
     key_dict = {
         'rwd_offset': 'npx_time',
-        'poke': 'poke_npx',
+        #'poke': 'poke_npx',
         'lvr': 'lever_npx',
         'cp_corrected': 'cp_corrected',
         'cp': 'cp',
@@ -116,14 +117,32 @@ def compute_alignments(syncdf, bool_click): # might need readjusting for no clic
     if exp == 'c':
         cmap_FI = ListedColormap(list([color_FI_blocks[1],color_FI_blocks[1]]))
 
-    if bool_click:
-        alignments_dict = {'rwd_offset':rwd_offset, 'rwd_onset':rwd_onset, 'lvr':lvr, 'poke':poke,
+    if bool_click and bool_cp_corrected:
+        alignments_dict = {'rwd_offset':rwd_offset, 'rwd_onset':rwd_onset, 'lvr':lvr, #'poke':poke,
                        'click': click_onset, 'cp': cp, 'cp_corrected':cp_corrected}
-        alignments = ['rwd_offset', 'poke', 'lvr', 'cp_corrected', 'cp', 'click', 'rwd_onset']
-    else:
-        alignments_dict = {'rwd_offset':rwd_offset, 'rwd_onset':rwd_onset, 'lvr':lvr, 'poke':poke,
+        alignments = ['rwd_offset', #'poke',
+                      'lvr', 'cp_corrected', 'cp', 'click', 'rwd_onset']
+    elif bool_click and not bool_cp_corrected:
+        alignments_dict = {'rwd_offset':rwd_offset, 'rwd_onset':rwd_onset, 'lvr':lvr, #'poke':poke,
+                       'click': click_onset, 'cp': cp}
+        alignments = ['rwd_offset', #'poke',
+                      'lvr', 'cp', 'click', 'rwd_onset']
+    elif not bool_click and bool_cp_corrected:
+        alignments_dict = {'rwd_offset':rwd_offset, 'rwd_onset':rwd_onset, 'lvr':lvr, #'poke':poke,
                        'cp': cp, 'cp_corrected':cp_corrected}
-        alignments = ['rwd_offset', 'poke', 'lvr', 'cp_corrected', 'cp', 'rwd_onset']
+        alignments = ['rwd_offset', #'poke',
+                      'lvr', 'cp_corrected', 'cp', 'rwd_onset']
+    else:
+        alignments_dict = {'rwd_offset':rwd_offset, 'rwd_onset':rwd_onset, 'lvr':lvr, #'poke':poke,
+                           'cp':cp}
+        alignments = ['rwd_offset', #'poke',
+                      'lvr', 'cp', 'rwd_onset']
+
+
+    #else:
+    #    alignments_dict = {'rwd_offset':rwd_offset, 'rwd_onset':rwd_onset, 'lvr':lvr, 'poke':poke,
+    #                   'cp': cp, 'cp_corrected':cp_corrected}
+    #    alignments = ['rwd_offset', 'poke', 'lvr', 'cp_corrected', 'cp', 'rwd_onset']
 
     return alignments, alignments_dict, key_dict, cmap_FI, cmap_nprots
 #%%
@@ -693,9 +712,9 @@ def plot_probe_sofia(cluster_id, axs, sorted_data, cluster_info):
         if channel == best_channel:
             axs.plot(channel_pos[0],channel_pos[1],'.', color = '#3b2f80')
 #%%
-def produce_mega_neuron_fig(cluster_id, sorted_data, syncdf, neuronsdf, fig_save_path, bool_click, window = (-8,8), save_fig = True):
+def produce_mega_neuron_fig(cluster_id, sorted_data, syncdf, neuronsdf, fig_save_path, bool_click, bool_cp_corrected, window = (-8,8), save_fig = True):
 
-    alignments, alignments_dict, key_dict, cmap_FI, cmap_nprots = compute_alignments(syncdf,bool_click)
+    alignments, alignments_dict, key_dict, cmap_FI, cmap_nprots = compute_alignments(syncdf,bool_click, bool_cp_corrected)
 
     fig, axs = plt.subplots(3,len(alignments), figsize=(4*len(alignments),12), tight_layout = True, height_ratios=[1,2,1])
     for jj in range(len(alignments)):

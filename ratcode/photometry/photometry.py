@@ -108,6 +108,29 @@ def mask_jumps(x, cutoff = 0.01, fs = 100, thres = 5):
 
     return x_masked
 
+def make_continuous(data, min_val, max_val):
+    """
+    Converts a discontinuous signal into a continuous one by accounting for jumps between min and max values.
+
+    Parameters:
+    - data: array-like, the signal to be made continuous.
+    - min_val: float, the minimum value of the signal.
+    - max_val: float, the maximum value of the signal.
+
+    Returns:
+    - continuous_data: array-like, the continuous version of the signal.
+    """
+    continuous_data = np.array(data, dtype=float)
+    range_val = max_val - min_val
+
+    for i in range(1, len(data)):
+        if data[i] - data[i - 1] > range_val / 2:
+            continuous_data[i:] -= range_val
+        elif data[i - 1] - data[i] > range_val / 2:
+            continuous_data[i:] += range_val
+
+    return continuous_data
+
 def get_zscore(x):
     return (x - np.nanmean(x))/np.nanstd(x)
 
