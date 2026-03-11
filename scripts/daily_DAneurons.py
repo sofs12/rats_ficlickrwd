@@ -57,7 +57,7 @@ setup()
 """
 
 animal = 'Ruthenium'
-date = '260305'
+date = '260308'
 
 ## now looking at my old code, 01_DAneurons.py
 DANEURONS_PATH_HOME = os.path.join(DROPBOX_TASK_PATH, 'analysis_DAneurons')
@@ -238,6 +238,7 @@ axs[1].set_xlabel('time since rwd (FI normalised)')
 figtitle = f'{animal} {date} | experiment {exp} | lever presses'
 plt.suptitle(figtitle)
 plt.savefig(fr'{DANEURONS_PATH}\{figtitle.replace('|','_')}')
+
 # %%
 
 fig, axs = plt.subplots(1,2, figsize = (8, 4), tight_layout = True)

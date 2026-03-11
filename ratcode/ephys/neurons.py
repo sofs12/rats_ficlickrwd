@@ -278,7 +278,7 @@ def determine_experiment(syncdf):
 
     return exp
 #%%
-def determine_cell_type(cluster_id, sorted_data, syncdf):
+def determine_cell_type(cluster_id, sorted_data, syncdf, verbose = False):
 
     spike_times_cluster = sorted_data.spike_times[sorted_data.spike_clusters == cluster_id]/sorted_data.sampling_frequency
 
@@ -294,7 +294,6 @@ def determine_cell_type(cluster_id, sorted_data, syncdf):
     waveform_ms = np.arange(0,sorted_data.templates.shape[1]/sorted_data.sampling_frequency*1000,1/sampling_frequency*1000)
     mean_waveform = np.mean(sorted_data.templates[template_id,:,channels_to_consider],axis = 0)
 
-
     template_duration_FSIs = .4 #ms 400us 
     post_spike_suppression_TANs_ms = 40 #40 ms
 
@@ -303,17 +302,20 @@ def determine_cell_type(cluster_id, sorted_data, syncdf):
     trough = np.argmin(mean_waveform)
     peak = trough + np.argmax(mean_waveform[trough:])
     trough_to_peak_ms = (peak - trough)/sorted_data.sampling_frequency*1000
-    print(f'trough to peak (ms): {trough_to_peak_ms}')
+    if verbose:
+        print(f'trough  to peak (ms): {trough_to_peak_ms}')
 
 
     if trough_to_peak_ms <= template_duration_FSIs:
-        print(f'smaller than {template_duration_FSIs}. either FSI or unidentified interneuron')
+        if verbose:
+            print(f'smaller than {template_duration_FSIs}. either FSI or unidentified interneuron')
 
         #compute long interspike interval
         ISI = np.diff(spike_times_cluster) # in seconds
         total_recording_time = syncdf.npx_time.dropna().values[-1] - syncdf.npx_time.dropna().values[0] # in seconds
         long_interspike_ratio = len(ISI[ISI > 2])/total_recording_time*100
-        print(f'long interspike ratio (%): {long_interspike_ratio}')
+        if verbose:
+            print(f'long interspike ratio (%): {long_interspike_ratio}')
 
         if long_interspike_ratio > 10:
             cell_type = 'unidentified interneuron'
@@ -322,8 +324,9 @@ def determine_cell_type(cluster_id, sorted_data, syncdf):
             cell_type = 'FSI'
 
     else:
-        print(f'larger than {template_duration_FSIs}. either MSN or TAN')
-        print('computing post spike suppression')
+        if verbose:
+            print(f'larger than {template_duration_FSIs}. either MSN or TAN')
+            print('computing post spike suppression')
 
         autocorrelogram_900ms = np.hstack(align_spikes_to_ttl(spike_times_cluster,spike_times_cluster,(0,.9)))
         autocorrelogram_900ms = autocorrelogram_900ms[autocorrelogram_900ms!=0]
@@ -338,16 +341,19 @@ def determine_cell_type(cluster_id, sorted_data, syncdf):
 
         post_spike_suppression_ms = np.where(counts > av_FR_600_to_900)[0][0]
         #post_spike_suppression_ms = len(np.where(counts < av_FR_600_to_900)[0])
-        print(f'suppression: {post_spike_suppression_ms} ms')
+        if verbose:
+            print(f'suppression: {post_spike_suppression_ms} ms')
 
         if post_spike_suppression_ms > post_spike_suppression_TANs_ms:
-            print(f'suppression larger than {post_spike_suppression_TANs_ms} ms')
+            if verbose:
+                print(f'suppression larger than {post_spike_suppression_TANs_ms} ms')
             cell_type = 'TAN'
         else:
-            print(f'suppression smaller than {post_spike_suppression_TANs_ms} ms')
+            if verbose:
+                print(f'suppression smaller than {post_spike_suppression_TANs_ms} ms')
             cell_type = 'MSN'
-
-    print(f'cell identification: {cell_type}')
+    if verbose:
+        print(f'cell identification: {cell_type}')
 
     return cell_type
 #%%

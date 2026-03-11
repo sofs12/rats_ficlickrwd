@@ -53,9 +53,10 @@ def main():
 
     SAVE_SYNC_PATH = glob.glob(fr'{EPHYS_PATH}\{animal}{date}*\*')[0]
     
-    ####
-    #IBL_SORTER_PATH =  glob.glob(fr'{EPHYS_PATH}\{animal}{date}*\{animal}{date}*\ibl_sorter_results_drift_amplitude')[0]
+    
+    IBL_SORTER_PATH =  glob.glob(fr'{EPHYS_PATH}\{animal}{date}*\{animal}{date}*\ibl_sorter_results_drift_amplitude')[0]
 
+    ## CAREFUL HERE!!
     NEURO_PATH =  glob.glob(fr'{EPHYS_PATH}\{animal}{date}*\{animal}{date}*')[0]
     #NEURO_PATH = glob.glob(rf"H:\{animal}{date}*\{animal}{date}*")[0]#[1]
     #NEURO_PATH = glob.glob(rf"F:\EPHYS\{animal}{date}*\{animal}{date}*")[0]#[1]
@@ -70,19 +71,19 @@ def main():
     print()
 
     ## run this only once to update the channel positions if they are in the old format (x = 1 or 2 for shank identity instead of actual x position)
-    #if os.path.exists(Path(fr'{IBL_SORTER_PATH}\channel_positions_original.npy')):
-    #    print('channel_positions.npy had already been updated')
+    if os.path.exists(Path(fr'{IBL_SORTER_PATH}\channel_positions_original.npy')):
+        print('channel_positions.npy had already been updated')
 
-    #else:
-    #    print('channel_positions.npy updated')
-    #    file_position = Path(fr'{IBL_SORTER_PATH}\channel_positions.npy')
-    #    xy = np.load(file_position)
-    #    shank = np.load(file_position.with_name('channel_shanks.npy'))
-    #    if len(np.unique(xy[:, 0])) == 2:
-    #        np.save(file_position.with_name('channel_positions_original.npy'), xy)
-    #        xy_new = xy.copy()
-    #        xy_new[:, 0] = xy_new[:, 0] + shank.astype(np.float32) * 32 * 3
-    #        np.save(file_position, xy_new)
+    else:
+        print('channel_positions.npy updated')
+        file_position = Path(fr'{IBL_SORTER_PATH}\channel_positions.npy')
+        xy = np.load(file_position)
+        shank = np.load(file_position.with_name('channel_shanks.npy'))
+        if len(np.unique(xy[:, 0])) == 2:
+            np.save(file_position.with_name('channel_positions_original.npy'), xy)
+            xy_new = xy.copy()
+            xy_new[:, 0] = xy_new[:, 0] + shank.astype(np.float32) * 32 * 3
+            np.save(file_position, xy_new)
 
     probe = raw_rec.get_probe()
 
@@ -90,7 +91,6 @@ def main():
     plot_probe(probe)
     plt.savefig(fr'{PATH_SAVE_FIGS}\probe_geometry.png')
     plt.close()
-
 
 
     ## detect TTLs rising edge -- this step takes some time
@@ -141,6 +141,7 @@ def main():
     print()
     print(f"Total rising edges detected: {len(rising_edges)}")
     print(fr'syncdf saved to {SAVE_SYNC_PATH}/rising_edges.npy')
+    
 
 if __name__ == "__main__":
     main()

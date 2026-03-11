@@ -41,7 +41,7 @@ def calculate_snr(signal):
 # %%
 
 animal = 'Ruthenium'
-date = '260309'
+date = '260311'
 ## in case the encoder malfunctions (fully), flag this as False
 bool_encoder = True
 
