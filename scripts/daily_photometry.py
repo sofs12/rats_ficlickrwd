@@ -19,6 +19,8 @@ import numpy as np
 import seaborn as sns
 from scipy.stats import zscore
 from scipy.signal import savgol_filter
+import statsmodels.api as sm
+
 
 from ratcode.config.paths import PATH_STORE_PICKLES, DROPBOX_TASK_PATH
 from ratcode.common.logging import determine_experiment
@@ -41,7 +43,7 @@ def calculate_snr(signal):
 # %%
 
 animal = 'Ruthenium'
-date = '260311'
+date = '260312'
 ## in case the encoder malfunctions (fully), flag this as False
 bool_encoder = True
 
@@ -159,108 +161,6 @@ plt.title(f'{animal}_{date}')
 plt.ylim(0)
 plt.show()
 
-#%%
-
-import statsmodels.api as sm
-from scipy.signal import savgol_filter
-
-tt = 50
-
-tomato = harpdf.query(f'trialno == {tt}').tdtomato.values
-gfp = harpdf.query(f'trialno == {tt}').gfp.values
-encoder = harpdf.query(f'trialno == {tt}').encoder.values
-continuous_encoder = harpdf.query(f'trialno == {tt}').continuous_encoder.values
-
-prediction = get_prediction(tomato,gfp)
-
-time = np.arange(len(tomato))*.001
-
-
-
-fig, axs = plt.subplots(4,2, figsize = (12,8), tight_layout = True,
-                        width_ratios=[4,1])
-                        #sharex = 'col')
-
-
-axs[0,0].plot(time, zscore(tomato), color = 'red', lw = .5)
-#axs[0].plot(prediction, color = 'grey', lw = 1)
-axs[0,0].plot(time, zscore(gfp), color = 'green', lw = .5)
-axs[1,0].plot(time, zscore(gfp-prediction), color = 'purple', lw = .5)
-
-axs[0,0].plot(time, encoder, color = 'blue', lw = .5, alpha = 0.5)
-axs[0,0].plot(time, continuous_encoder - np.min(continuous_encoder), lw = .5)
-
-## computing derivative
-
-window = 51 ## must be odd
-encoder_vel = savgol_filter(continuous_encoder, window_length=window, polyorder=2, deriv=1)
-encoder_vel_abs = np.abs(encoder_vel)
-
-encoder_diff = axs[0,0].twinx()
-encoder_diff.plot(time, encoder_vel, color = 'orange', lw = .5, alpha = 0.5)
-
-
-## including the decoder (position and velocity) as predictor
-X = np.column_stack([tomato, zscore(continuous_encoder), zscore(encoder_vel)])
-X_with_const = sm.add_constant(X)
-mod = sm.QuantReg(gfp, X_with_const)
-res = mod.fit(q = 0.5)
-
-axs[2,0].plot(time, zscore(res.resid), color = 'teal', lw = 1)
-
-
-## only decoder position
-X = np.column_stack([tomato, zscore(continuous_encoder)])
-X_with_const = sm.add_constant(X)
-mod_pos = sm.QuantReg(gfp, X_with_const)
-res_pos = mod_pos.fit(q = 0.5)
-
-axs[3,0].plot(time, zscore(res_pos.resid), color = 'teal', lw = 1)
-
-
-axs[0,1].scatter(tomato, gfp, c = continuous_encoder, s = 3)
-axs[1,1].scatter(tomato, gfp - prediction, c = continuous_encoder, s = 3)
-axs[2,1].scatter(tomato, res.resid, c = continuous_encoder, s = 3)
-axs[3,1].scatter(tomato, res_pos.resid, c = continuous_encoder, s = 3)
-
-
-axs[-1,0].set_xlabel('time in trial (s)')
-
-
-fig.suptitle(f'{animal} {date} | trial {tt}')
-
-#plt.xlim(15)
-#axs[0].set_ylim(-2,2)
-#axs[1].set_ylim(-2,2)
-
-
-
-print(calculate_snr(tomato))
-print(calculate_snr(gfp))
-
-
-
-
-coefs = res.params[1:] # Skip intercept
-cis = res.conf_int()[1:]
-labels = ['tdTomato', 'rot pos', 'rot vel']
-
-
-#for i, label in enumerate(labels):
-#    axs[3,1].plot(coefs[i], i, 'ko', markersize=8) 
-#    axs[3,1].hlines(i, cis[i, 0], cis[i, 1], colors='blue', lw=4, alpha=0.6)
-#
-#axs[3,1].set_yticks(range(len(labels)), labels)
-#axs[3,1].axvline(0, color='grey', linestyle='--', alpha=0.5)
-
-
-#plt.xlabel('Coefficient Estimate (95% CI)')
-#plt.title('Quantile Regression: Precision of Predictors', loc='left')
-#plt.grid(axis='x', linestyle=':', alpha=0.5)
-#plt.gca().spines[['top', 'right']].set_visible(False)
-#
-#plt.tight_layout()
-#plt.show()
 
 # %%
 

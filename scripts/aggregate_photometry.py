@@ -20,11 +20,11 @@ import seaborn as sns
 from scipy.stats import zscore
 from scipy.signal import savgol_filter
 
-from ratcode.config.paths import PATH_STORE_PICKLES, DROPBOX_TASK_PATH
+from ratcode.config.paths import PATH_STORE_PICKLES, DROPBOX_TASK_PATH, PATH_DATAFRAMES
 from ratcode.common.logging import determine_experiment
 from ratcode.common.colorcodes import *
 from ratcode.behavior import change_point
-from ratcode.photometry.photometry import get_prediction, quantile_regression, signal2eventsnippets, find_poly, segment_and_fit_function, butter_filter, mask_jumps, make_continuous
+from ratcode.photometry.photometry import get_prediction, quantile_regression, signal2eventsnippets, find_poly, segment_and_fit_function, butter_filter, mask_jumps, make_continuous, compute_snippets_across_days
 from ratcode.common.dataframe import group_and_listify
 from ratcode.common.time import convert_date_bonsai, convert_timestamp
 from ratcode.common.math import drop_nans_matrix
@@ -33,31 +33,28 @@ from ratcode.common.colorcodes import FI_order, color_FI_blocks, rwd_order, colo
 from ratcode.init import setup
 setup()
 
-
+#%%
+import matplotlib.cm as cm
+tercile_colors = ['#D95F02', '#B0B0B0', '#1B9E77']
+tercile_list = ['T1', 'T2', 'T3']
+tercile_rateH_colors = [cm.get_cmap('copper')(1-ii*.35) for ii in range(3)]
 # %%
 
-animal = 'Palladium'
-
-
-# %%
-
-PHOTOMETRY_PATH = os.path.join(DROPBOX_TASK_PATH, 'photometry', animal)
+#PHOTOMETRY_PATH = os.path.join(DROPBOX_TASK_PATH, 'photometry', animal)
 PATH_SAVE_DFS = os.path.join(DROPBOX_TASK_PATH, 'analysis_photometry')
-
 
 #%%
 
 aggregated_jointdf = []
 
 for file in os.listdir(PATH_SAVE_DFS):
-    if animal in file:
-        if 'jointdf' in file:
-            pkl_path = os.path.join(PATH_SAVE_DFS, file)
-            jointdf = pd.read_pickle(pkl_path)
-            jointdf['animal'] = file.split('_')[0]
-            jointdf['date'] = file.split('_')[1]
-            jointdf['experiment'] = determine_experiment(jointdf)
-            aggregated_jointdf.append(jointdf)
+    if 'jointdf' in file:
+        pkl_path = os.path.join(PATH_SAVE_DFS, file)
+        jointdf = pd.read_pickle(pkl_path)
+        jointdf['animal'] = file.split('_')[0]
+        jointdf['date'] = file.split('_')[1]
+        jointdf['experiment'] = determine_experiment(jointdf)
+        aggregated_jointdf.append(jointdf)
 
 if aggregated_jointdf:
     aggregated_jointdf = pd.concat(aggregated_jointdf, ignore_index=True)
@@ -68,29 +65,451 @@ if aggregated_jointdf:
 
 else:
     print("No files matched the criteria.")
+
 #%%
-
 ## zscore DA per session (so that we can aggregate)
-
-
 def zscore_session_arrays(group):
-    # 1. Flatten all arrays in the session to find the "true" session mean/std
     all_values = np.concatenate([np.atleast_1d(val) for val in group.values])
     
     mu = np.nanmean(all_values)
     sigma = np.nanstd(all_values)
-    
+
     if sigma == 0 or np.isnan(sigma):
         return group # Return as is if we can't scale
     
-    # 2. Apply the Z-score to each array in the column
     return group.apply(lambda x: (np.array(x) - mu) / sigma)
 
-# Apply the grouping
 aggregated_jointdf['DA_session_zscored'] = aggregated_jointdf.groupby(['animal', 'date'])['DA_poly_session'].transform(zscore_session_arrays)
 
 #%%
 
+aggregated_jointdf.keys()
+#%%
+cols_to_drop = ['bool_block', 'trial_start_arduino', 'trial_end_arduino',
+       'trial_duration_arduino', 'lever_rel_arduino',
+       'count_lever', 'pump_on_arduino',
+       'pump_off_arduino', 'cp_arduino',
+        'poke_rel_arduino']
+
+aggregated_jointdf.drop(cols_to_drop, axis = 1, inplace = True)
+#%%
+# rename columns
+
+rename_dict = {
+        'timestamp_session': 'time_DA',
+        'predicted_gfp_session': 'predicted_gfp',
+        'DA_session_zscored': 'DA_zscored_session',
+        'trial_start_harp': 'trial_start',
+        'trial_end_harp': 'trial_end',
+        'trial_duration_harp': 'trial_duration',
+        'lever_rel_harp': 'lever_rel',
+        't_trial_harp': 't_trial',
+        'last_lever_harp': 'last_lever',
+        'pump_on_harp': 'pump_on',
+        'pump_off_harp': 'pump_off',
+        'lever_abs_harp': 'lever_abs',
+        'last_lever_abs_harp': 'last_lever_abs',
+        'prelast_lever_harp': 'prelast_lever',
+        'prelast_lever_abs_harp': 'prelast_lever_abs',
+        'cp_harp': 'cp',
+        'poke_rel_harp': 'poke_rel',
+        'poke_abs_harp': 'poke_abs',
+        'click_harp': 'click_on'
+        #'cp_abs_harp': 'cp_abs',
+        #'interpress_after_cp_harp': 'interpress_after_cp',
+        #'corrected_cp_harp': 'corrected_cp',
+        #'corrected_cp_abs_harp': 'corrected_cp_abs',
+        #'pump_on_abs_harp': 'pump_on_abs',
+        #'pump_off_abs_harp': 'pump_off_abs',
+        #'preprelast_lever_abs_harp': 'preprelast_lever_abs',
+        #'click_abs_harp': 'click_on_abs',
+        #'t_trial_harp_normalised': 't_trial_normalised'
+        }
+
+#%%
+aggregated_jointdf = aggregated_jointdf.rename(columns = rename_dict)
+
+#%%
+
+
+aggregated_jointdf['animaldate'] = aggregated_jointdf.apply(lambda x: f'{x.animal}_{x.date}', axis = 1)
+
+aggregated_jointdf['trial_in_block'] = aggregated_jointdf.groupby(['animaldate','blockno']).cumcount() + 1
+
+aggregated_jointdf['bool_new_block'] = aggregated_jointdf['blockno'] != aggregated_jointdf['blockno'].shift(1)
+
+aggregated_jointdf = aggregated_jointdf.reset_index(drop=True)
+#%%
+for key in ['blockno', 'FI', 'n_protocols']:
+    aggregated_jointdf[f'prev_{key}'] = aggregated_jointdf.loc[aggregated_jointdf['bool_new_block'], key].groupby(aggregated_jointdf['animaldate']).shift(1)
+    aggregated_jointdf[f'prev_{key}'] = aggregated_jointdf[f'prev_{key}'].ffill()
+#%%
+aggregated_jointdf['bool_cp'] = aggregated_jointdf.cp.apply(lambda x: np.isnan(x) == False)
+aggregated_jointdf['bool_cp'] = aggregated_jointdf.apply(lambda x: False if x.cp > x.FI else np.isnan(x.cp) == False, axis=1)
+aggregated_jointdf['cp'] = aggregated_jointdf.apply(lambda x: np.nan if not x.bool_cp else x.cp, axis=1)
+
+aggregated_jointdf['cp_abs'] = aggregated_jointdf.cp + aggregated_jointdf.trial_start
+aggregated_jointdf['interpress_after_cp'] = aggregated_jointdf.apply(lambda x: np.diff(x.lever_rel[x.lever_rel > x.cp]), axis = 1)
+#aggregated_jointdf['corrected_cp'] = aggregated_jointdf.apply(lambda x: x.cp - np.mean(x.interpress_after_cp), axis = 1)
+#aggregated_jointdf['corrected_cp_abs'] = aggregated_jointdf.corrected_cp + aggregated_jointdf.trial_start
+
+aggregated_jointdf['pump_on_abs'] = aggregated_jointdf.pump_on + aggregated_jointdf.trial_start
+aggregated_jointdf['pump_off_abs'] = aggregated_jointdf.pump_off + aggregated_jointdf.trial_start
+
+#blocksdf['click_on_abs'] = blocksdf.click_on + blocksdf.trial_start
+
+aggregated_jointdf['preprelast_lever_abs'] = aggregated_jointdf.lever_abs.apply(lambda x: x[-3] if len(x)>2 else np.nan)
+
+#aggregated_jointdf['FI'] = aggregated_jointdf.FI.apply(lambda x: int(x/1000))
+aggregated_jointdf['trialno_within_block'] = aggregated_jointdf.groupby(['animaldate', 'blockno']).cumcount() + 1
+
+aggregated_jointdf['cp_FInormalised'] = aggregated_jointdf.cp/aggregated_jointdf.FI
+
+#aggregated_jointdf['DA_trial_zscored'] = aggregated_jointdf.DA.apply(lambda x: compute_zscore(x))
+
+
+#%%
+aggregated_jointdf.to_pickle(rf'{PATH_DATAFRAMES}\aggregate_photometry_Palladium_Ruthenium.pkl')
+
+#%%
+
+
+## from the thesis nb
+
+#aggregated_jointdf['tercile_cp_FInormalised'] = (
+#    aggregated_jointdf.query('bool_cp')
+#    .groupby('animaldate')['cp_FInormalised']
+#    .transform(lambda x: pd.qcut(x, q=3, labels=tercile_list))
+#)
+#
+#aggregated_jointdf['tercile_cp_FInormalised_withinFI'] = (
+#    aggregated_jointdf.query('bool_cp')
+#    .groupby(['animaldate','FI','n_protocols'])['cp_FInormalised']
+#    .transform(lambda x: pd.qcut(x, q=3, labels=tercile_list))
+#)
+## some errors with nans
+
+#%%
+def categorize_presses(presses): ## exclude the last press from the terciles categorization
+    n = len(presses) #I'm excluding the last press
+    if n < 4:
+        return ["out"] * n
+    
+    thirds = np.linspace(0, n-1, 4, dtype=int)  # [0, n/3, 2n/3, n]
+    labels = []
+    for i in range(3):
+        labels.extend([f"t{i+1}"] * (thirds[i+1] - thirds[i]))
+
+    labels.append(['last'])
+    labels = np.hstack(labels)
+    return labels
+
+aggregated_jointdf['lever_index_category'] = aggregated_jointdf.lever_rel.apply(categorize_presses)
+
+#%%%
+
+"""
+.########.##.....##.########..######..####..######.....##....##.########.
+....##....##.....##.##.......##....##..##..##....##....###...##.##.....##
+....##....##.....##.##.......##........##..##..........####..##.##.....##
+....##....#########.######....######...##...######.....##.##.##.########.
+....##....##.....##.##.............##..##........##....##..####.##.....##
+....##....##.....##.##.......##....##..##..##....##....##...###.##.....##
+....##....##.....##.########..######..####..######.....##....##.########.
+"""
+# knobs
+alignment_idx = 1
+baseline_correct = False
+DA_column = 'DA_zscored_session'
+#DA_column = 'DA_envelope_z'
+
+animal = 'Palladium'
+df = aggregated_jointdf.query(f'animal == "{animal}"')# and date in {photometry_dates_dict[animal]}')
+
+#df = allphotometrydf.query(f'animal == "{animal}"')
+
+
+window = (-4,4)
+zero_time = int((window[1] - window[0])/2*100)
+
+alignments = ['cp_abs', 'last_lever_abs']
+alignment_labels = ['transition point', 'last press']
+
+if alignment_idx == 1:
+    baseline_start = zero_time-30
+    baseline_end = zero_time
+else:
+    baseline_start = zero_time-100
+    baseline_end = zero_time-50
+
+
+
+baseline_title = ' | baseline corrected' if baseline_correct else ''
+
+exp = 'a'
+snippets_a = []
+for FI in FI_order:
+    time, snippets = compute_snippets_across_days(df,
+        f'experiment == "{exp}" and FI == {FI}', alignments[alignment_idx], DA_column, window)
+    snippets_a.append(snippets)
+
+exp = 'b'
+snippets_b = []
+for FI in FI_order:
+    time, snippets = compute_snippets_across_days(df,
+        f'experiment == "{exp}" and FI == {FI}', alignments[alignment_idx], DA_column, window)
+    snippets_b.append(snippets)
+
+exp = 'c'
+snippets_c = []
+for nprots in rwd_order:
+    time, snippets = compute_snippets_across_days(df, 
+        f'experiment == "{exp}" and n_protocols == {nprots}', alignments[alignment_idx], DA_column, window)
+    snippets_c.append(snippets)
+
+
+
+fig, axs = plt.subplots(1,3, figsize = (12,4), tight_layout = True, sharex = True, sharey = True)
+
+for ii in range(3):
+    if baseline_correct:
+        axs[0].plot(time,np.nanmean(snippets_a[ii], axis = 0) - np.mean(np.nanmean(snippets_a[ii], axis=0)[baseline_start:baseline_end]), color = color_FI_blocks[ii])
+        axs[1].plot(time,np.nanmean(snippets_b[ii], axis = 0) - np.mean(np.nanmean(snippets_b[ii], axis=0)[baseline_start:baseline_end]), color = color_FI_blocks[ii])
+        axs[2].plot(time,np.nanmean(snippets_c[ii], axis = 0) - np.mean(np.nanmean(snippets_c[ii], axis=0)[baseline_start:baseline_end]), color = color_nprots_blocks[ii])
+            
+    else:
+        axs[0].plot(time,np.nanmean(snippets_a[ii], axis = 0), color = color_FI_blocks[ii])
+        axs[1].plot(time,np.nanmean(snippets_b[ii], axis = 0), color = color_FI_blocks[ii])
+        axs[2].plot(time,np.nanmean(snippets_c[ii], axis = 0), color = color_rwd_blocks[ii])
+
+    axs[ii].axvline(0, color = 'grey', lw = 1)
+
+    axs[ii].set_xlabel(f'time since {alignment_labels[alignment_idx]} (s)')
+
+axs[0].set_title('varying FI')
+axs[1].set_title('fixed reward rate')
+axs[2].set_title('varying reward magnitude')
+
+axs[0].set_ylabel('DA (z ΔF/F)')
+
+figtitle = f'{animal} all | DA aligned to {alignment_labels[alignment_idx]}{baseline_title} | {DA_column}'
+#figtitle = f'{animal} all | DA aligned to {alignment_labels[alignment_idx]}{baseline_title}_RPE'
+fig.suptitle(figtitle)
+#fig.savefig(fr'{photometry_fig_path}\{figtitle.replace('|', '_')}.png')
+#fig.savefig(fr'{photometry_fig_path}\{figtitle.replace('|', '_')}.pdf')
+
+
+#%%
+
+
+#### NOT UPDATED
+
+animal = 'Ruthenium'
+df = aggregated_jointdf.query(f'animal == "{animal}"')# and date in {photometry_dates_dict[animal]}')
+time, snippets_cp = compute_snippets_across_days(df,f'bool_cp', 'last_lever_abs','DA_zscored_session', (-4,4))
+time, snippets_nocp = compute_snippets_across_days(df,f'bool_cp == False', 'last_lever_abs','DA_zscored_session', (-4,4))
+
+alignment_idx = 1
+DA_column = 'DA_zscored_session'
+
+fig, axs = plt.subplots(2,3, tight_layout = True, figsize = (12,8))
+
+
+### exp a ####
+
+exp = 'a'
+snippets_a = []
+FI_a = []
+for FI in FI_order:
+    time, snippets = compute_snippets_across_days(df,
+        f'experiment == "{exp}" and FI == {FI}', alignments[alignment_idx], DA_column, window)
+    snippets = drop_nan_rows_in_matrix(snippets)
+    FI_vals = FI*np.ones(len(snippets))
+    snippets_a.append(snippets)
+    FI_a.append(FI_vals)
+
+
+snippets_a = np.vstack(snippets_a)
+FI_a = np.hstack(FI_a)
+
+vmin,vmax = np.nanquantile(snippets_a,[.01,.99])
+axs[0,0].imshow(snippets_a, vmin = vmin, vmax = vmax, aspect = 'auto', cmap = bone_cmap,
+                extent = [time[0], time[-1], len(snippets_a), 1])
+
+for ii in range(3):
+    axs[1,0].plot(time, np.nanmedian(snippets_a[FI_a == FI_list[ii]], axis = 0), color = color_FI_blocks[ii])
+
+ax_FI = inset_axes(axs[0,0], width="4%", height="100%", loc="center left", borderpad=0)
+ax_FI.matshow(FI_a.reshape(len(FI_a),1), aspect = 'auto', cmap = cmap_FI)
+ax_FI.set_axis_off()
+ax_FI = inset_axes(axs[0,0], width="4%", height="100%", loc="center right", borderpad=0)
+ax_FI.matshow(FI_a.reshape(len(FI_a),1), aspect = 'auto', cmap = cmap_FI)
+ax_FI.set_axis_off()
+
+
+
+### exp b ####
+
+exp = 'b'
+snippets_b = []
+FI_b = []
+for FI in FI_list:
+    time, snippets = compute_snippets_across_days(df,
+        f'experiment == "{exp}" and FI == {FI}', alignments[alignment_idx], DA_column, window)
+    snippets = drop_nan_rows_in_matrix(snippets)
+    FI_vals = FI*np.ones(len(snippets))
+    snippets_b.append(snippets)
+    FI_b.append(FI_vals)
+
+
+snippets_b = np.vstack(snippets_b)
+FI_b = np.hstack(FI_b)
+
+vmin,vmax = np.nanquantile(snippets_b,[.01,.99])
+axs[0,1].imshow(snippets_b, vmin = vmin, vmax = vmax, aspect = 'auto', cmap = bone_cmap,
+                extent = [time[0], time[-1], len(snippets_b), 1])
+
+for ii in range(3):
+    axs[1,1].plot(time, np.nanmedian(snippets_b[FI_b == FI_list[ii]], axis = 0), color = color_FI_blocks[ii])
+
+ax_FI = inset_axes(axs[0,1], width="4%", height="100%", loc="center left", borderpad=0)
+ax_FI.matshow(FI_b.reshape(len(FI_b),1), aspect = 'auto', cmap = cmap_FI)
+ax_FI.set_axis_off()
+ax_FI = inset_axes(axs[0,1], width="4%", height="100%", loc="center right", borderpad=0)
+ax_FI.matshow(FI_b.reshape(len(FI_b),1), aspect = 'auto', cmap = cmap_FI)
+ax_FI.set_axis_off()
+
+
+
+### exp c ####
+
+exp = 'c'
+snippets_c = []
+rwd_c = []
+for nprots in nprots_list:
+    time, snippets = compute_snippets_across_days(df,
+        f'experiment == "{exp}" and n_protocols == {nprots}', alignments[alignment_idx], DA_column, window)
+    snippets = drop_nan_rows_in_matrix(snippets)
+    rwd_vals = nprots*np.ones(len(snippets))
+    snippets_c.append(snippets)
+    rwd_c.append(rwd_vals)
+
+
+snippets_c = np.vstack(snippets_c)
+rwd_c = np.hstack(rwd_c)
+
+vmin,vmax = np.nanquantile(snippets_c,[.01,.99])
+axs[0,2].imshow(snippets_c, vmin = vmin, vmax = vmax, aspect = 'auto', cmap = bone_cmap,
+                extent = [time[0], time[-1], len(snippets_c), 1])
+
+for ii in range(3):
+    axs[1,2].plot(time, np.nanmedian(snippets_c[rwd_c == nprots_list[ii]], axis = 0), color = color_nprots_blocks[ii])
+
+ax_rwd = inset_axes(axs[0,2], width="4%", height="100%", loc="center left", borderpad=0)
+ax_rwd.matshow(rwd_c.reshape(len(rwd_c),1), aspect = 'auto', cmap = cmap_nprots)
+ax_rwd.set_axis_off()
+ax_rwd = inset_axes(axs[0,2], width="4%", height="100%", loc="center right", borderpad=0)
+ax_rwd.matshow(rwd_c.reshape(len(rwd_c),1), aspect = 'auto', cmap = cmap_nprots)
+ax_rwd.set_axis_off()
+
+
+axs[1,0].sharey(axs[1,1])
+axs[1,2].sharey(axs[1,1])
+
+
+for ii in range(3):
+    axs[1,ii].axvline(0, color = 'grey', lw = 1)
+    axs[1,ii].set_xlabel(f'time since {alignment_labels[alignment_idx]} (s)')
+
+axs[0,0].set_title('varying FI')
+axs[0,1].set_title('fixed reward rate')
+axs[0,2].set_title('varying reward magnitude')
+
+axs[1,0].set_ylabel('DA (a.u.)')
+
+figtitle = f'{animal} all | DA aligned to {alignment_labels[alignment_idx]}{baseline_title} | with heatmap'
+#figtitle = f'{animal} all | DA aligned to {alignment_labels[alignment_idx]}{baseline_title}_RPE'
+fig.suptitle(figtitle)
+#fig.savefig(fr'{photometry_fig_path}\{figtitle.replace('|', '_')}.png')
+
+
+#%%
+
+"""
+.########.##.....##.########..##........#######..########..########.########.....########..########
+.##........##...##..##.....##.##.......##.....##.##.....##.##.......##.....##....##.....##.##......
+.##.........##.##...##.....##.##.......##.....##.##.....##.##.......##.....##....##.....##.##......
+.######......###....########..##.......##.....##.##.....##.######...##.....##....##.....##.######..
+.##.........##.##...##........##.......##.....##.##.....##.##.......##.....##....##.....##.##......
+.##........##...##..##........##.......##.....##.##.....##.##.......##.....##....##.....##.##......
+.########.##.....##.##........########..#######..########..########.########.....########..##......
+"""
+
+def align_DA_to_ttls(blocksdf, ttl_column, DA_column = 'DA_zscored_per_session', alignment_window=(-2, 2), bin_size=0.01):
+    """
+    Align DA activity to TTL events for each session in blocksdf.
+
+    Parameters:
+    -----------
+    blocksdf : pd.DataFrame
+        DataFrame containing DA activity and TTL events. Must include 'animaldate', 'time_DA', and 'DA'.
+    ttl_column : str
+        Column name in blocksdf containing TTL events to align DA activity to.
+    alignment_window : tuple, optional
+        Time window around TTL events to align DA activity (default: (-2, 2)).
+    bin_size : float, optional
+        Size of bins for alignment (default: 0.01 seconds).
+
+    Returns:
+    --------
+    aligned_snippets : dict
+        Dictionary where keys are 'animaldate' and values are aligned DA snippets for each session.
+    alignment_time : np.array
+        Array of time bins used for alignment.
+    """
+    aligned_snippets = {}
+    all_snippets = []  # List to collect all snippets
+
+    n_timestamps = 1 + (alignment_window[1]-alignment_window[0])/bin_size
+
+    for animaldate in blocksdf['animaldate'].unique():
+        session_df = blocksdf.query(f'animaldate == "{animaldate}"')
+        time_DA = np.hstack(session_df['time_DA'].values)
+        DA_signal = np.hstack(session_df[DA_column].values)
+        ttl_events = session_df[ttl_column].values  # Use the specified TTL column
+
+        # Align DA activity to TTL events
+        snippets, time = signal2eventsnippets(time_DA, DA_signal, ttl_events, alignment_window, bin_size, nanify=False)
+        aligned_snippets[animaldate] = snippets
+        all_snippets.append(snippets)
+
+    all_snippets = np.vstack(all_snippets)
+
+    return aligned_snippets, time, all_snippets
+
+
+###### where do I compute the lever index? do this again -- missing for the earlier dates
+
+exploded_df = aggregated_jointdf.explode(['lever_abs','lever_index', 'lever_index_category'])
+exploded_df = exploded_df[exploded_df['lever_index'].notna()]  # Remove NaNs
+exploded_df['lever_index'] = pd.to_numeric(exploded_df['lever_index'], errors='coerce')  # Ensure numeric
+
+_, time, all_snippets = align_DA_to_ttls(exploded_df, 'lever_abs', 'DA_zscored_session', alignment_window=(-2, 2), bin_size=0.01)
+# Discard rows with NaNs
+cleaned_snippets = all_snippets[~np.isnan(all_snippets).any(axis=1)]
+
+
+
+#%%
+"""
+.##....##.########.##......##.....######..##....##.####.########..########..########.########..######.
+.###...##.##.......##..##..##....##....##.###...##..##..##.....##.##.....##.##..........##....##....##
+.####..##.##.......##..##..##....##.......####..##..##..##.....##.##.....##.##..........##....##......
+.##.##.##.######...##..##..##.....######..##.##.##..##..########..########..######......##.....######.
+.##..####.##.......##..##..##..........##.##..####..##..##........##........##..........##..........##
+.##...###.##.......##..##..##....##....##.##...###..##..##........##........##..........##....##....##
+.##....##.########..###..###......######..##....##.####.##........##........########....##.....######.
+"""
 # Define your columns
 colname = 'DA_session_zscored'
 eventalignment = 'nonrwd_lever_abs'
@@ -107,29 +526,23 @@ meta_cols = ['animal', 'date', 'experiment', 'FI', 'n_protocols']  # Adjust 'n_p
 
 for (ani, date, exp, fi, rwd), daydf in aggregated_jointdf.groupby(meta_cols):
     
-    # 1. Extract data for this specific combination
     ts = np.hstack(daydf.timestamp_session.values)
     sig = np.hstack(daydf[colname].values)
     
-    # Ensure eventalignment cells are handled whether they are scalars or arrays
     evs = np.hstack([np.atleast_1d(x) for x in daydf[eventalignment].values])
     
-    # 2. Generate snippets
     snipps, time = signal2eventsnippets(ts, sig, evs, [-4, 4], 0.01)
     
-    # 3. If snippets were found, record them and the metadata
     num_snipps = snipps.shape[0]
     if num_snipps > 0:
         all_snipps.append(snipps)
         
-        # Create metadata arrays of length N for this batch
         meta['animal'].append(np.full(num_snipps, ani))
         meta['date'].append(np.full(num_snipps, date))
         meta['experiment'].append(np.full(num_snipps, exp))
         meta['FI'].append(np.full(num_snipps, fi))
         meta['n_protocols'].append(np.full(num_snipps, rwd))
 
-# 4. Collapse everything into final flat arrays
 snipps_matrix = np.vstack(all_snipps)
 animal_idx = np.concatenate(meta['animal'])
 date_idx = np.concatenate(meta['date'])
@@ -137,7 +550,6 @@ exp_idx = np.concatenate(meta['experiment'])
 FI_idx = np.concatenate(meta['FI'])
 rwd_idx = np.concatenate(meta['n_protocols'])
 
-# Final Clean (optional but recommended based on your snippet)
 snipps_matrix = drop_nans_matrix(snipps_matrix)
 
 #%%

@@ -63,5 +63,16 @@ phy template-gui params.py
   python script/daily_neurons_03_produce_figs.py animal date
   ```
 
+### pipeline to merge dopamine and neural data
 
+- create the simpledf (conversion between DA and npx clocks). Run from terminal:
+
+```
+python scripts/daily_DAneurons_01_produce_simpledf.py animal date
+```
+
+- produce spike triggered dopamine averages. Run from terminal:
+````
+python scripts/daily_DAneurons_02_STA.py animal date
+```
 

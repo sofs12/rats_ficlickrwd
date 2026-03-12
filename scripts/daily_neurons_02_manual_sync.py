@@ -49,8 +49,8 @@ setup()
 .##.....##.##....##.####.##.....##.##.....##.########....########..##.....##....##....########
 """
 
-animal = 'Ruthenium'
-date = '260310'
+animal = 'Palladium'
+date = '260311'
 # %%
 
 
@@ -125,7 +125,7 @@ plt.plot(duration_bhv,'.-', label = 'bhv')
 #trials = np.concatenate([[np.nan]*8,rising_edges])
 #trials = np.delete(trials,[22,44,63])
 
-trials = np.delete(rising_edges,[0])
+trials = np.delete(rising_edges,[0,26,47,67,87,93])
 
 #trials =  np.concatenate([trials, [np.nan]*24])
 #np.delete(rising_edges,[0,24,55,56,104,102,103,112,117,120,131,137,143])
@@ -212,3 +212,5 @@ syncdf['bool_cp'] = syncdf.cp.apply(lambda x: not(np.isnan(x)))
 """
 syncdf.to_pickle(fr'{SAVE_SYNC_PATH}/syncdf.pkl')
 
+
+# %%

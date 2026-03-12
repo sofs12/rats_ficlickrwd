@@ -597,4 +597,144 @@ def figure_multiple_alignments_w_raster(df, path_save_figs, DA_column = 'DA', bo
 
     fig.savefig(fr'{path_save_figs}/{figtitle}.png', facecolor = 'white')
 
-# %%
+
+### from figs_thesis.ipynb ----
+
+def compute_snippets_across_days(df, query_condition, alignment, DA_column = 'DA_zscored_session', window = (-2,2)):
+    all_snippets = []
+    for date in df.date.unique():
+        snippets, time = query_and_compute_snippets(
+        df.query(f'date == "{date}"'),
+        query_condition, alignment, 'time_DA', DA_column, window)
+
+        all_snippets.append(snippets)
+
+    return time, np.vstack(all_snippets)
+
+def drop_nan_rows_in_matrix(matrix):
+    return matrix[~np.isnan(matrix).any(axis=1)]
+
+## bootstraping
+from scipy.ndimage import gaussian_filter1d
+
+def bootstrap_ci(data, n_boot=1000, ci=95, smooth_sigma=None):
+    """
+    data: array, shape (n_trials, n_timepoints)
+    n_boot: number of bootstrap resamples
+    ci: confidence interval (e.g. 95)
+    smooth_sigma: optional Gaussian smoothing (in samples)
+
+    Returns:
+        median_trace, lower_bound, upper_bound
+    """
+    n_trials, n_time = data.shape
+    boot_medians = np.zeros((n_boot, n_time))
+
+    for i in range(n_boot):
+        resample_idx = np.random.choice(n_trials, n_trials, replace=True)
+        boot_medians[i] = np.nanmedian(data[resample_idx, :], axis=0)
+
+    # median of the original data
+    median_trace = np.nanmedian(data, axis=0)
+
+    # compute CI bounds
+    alpha = (100 - ci) / 2
+    lower = np.nanpercentile(boot_medians, alpha, axis=0)
+    upper = np.nanpercentile(boot_medians, 100 - alpha, axis=0)
+
+    # optional smoothing for plotting
+    if smooth_sigma is not None:
+        median_trace = gaussian_filter1d(median_trace, sigma=smooth_sigma)
+        lower = gaussian_filter1d(lower, sigma=smooth_sigma)
+        upper = gaussian_filter1d(upper, sigma=smooth_sigma)
+
+    return median_trace, lower, upper
+
+def categorize_presses(presses): ## exclude the last press from the terciles categorization
+    n = len(presses) #I'm excluding the last press
+    if n < 4:
+        return ["out"] * n
+    
+    thirds = np.linspace(0, n-1, 4, dtype=int)  # [0, n/3, 2n/3, n]
+    labels = []
+    for i in range(3):
+        labels.extend([f"t{i+1}"] * (thirds[i+1] - thirds[i]))
+
+    labels.append(['last'])
+    labels = np.hstack(labels)
+    return labels
+
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+
+def quantile_regression(X, y, quantile = 0.5):
+    data = pd.DataFrame()
+    data['X'] = X
+    data['y'] = y
+    model = smf.quantreg('y ~ X', data)
+    result = model.fit(q=quantile)
+    line = model.predict(result.params)
+
+    #dealing with nans, to return a line with the same size as the original data
+    transformed_with_nans = np.full_like(X, np.nan)
+    not_nan_indices = ~np.isnan(X)*~np.isnan(y)
+    transformed_with_nans[not_nan_indices] = line
+
+    return transformed_with_nans
+
+
+#def envelope_quantile_regression(tdtomato, gfp, low_q = .01, high_q = .99):
+#    x = np.asarray(tdtomato, dtype=np.float64)
+#    y = np.asarray(gfp, dtype=np.float64)
+#
+#    X = np.column_stack([x, x**2, x**3])
+#    X = sm.add_constant(X)
+#
+#    model_low = sm.QuantReg(y, X).fit(q=low_q)
+#    model_mid = sm.QuantReg(y,X).fit(q=.5)
+#    model_high = sm.QuantReg(y, X).fit(q=high_q)
+#
+#    y_pred_low = model_low.predict(X)
+#    y_pred_mid = model_mid.predict(X)
+#    y_pred_high = model_high.predict(X)
+#
+#    y_reshaped = (y-y_pred_mid)/(y_pred_high-y_pred_low)
+#
+#    return y_reshaped
+
+def envelope_quantile_regression(tdtomato, gfp, low_q=0.01, high_q=0.99, eps=1e-9):
+    x = np.asarray(tdtomato, dtype=np.float64)
+    y = np.asarray(gfp, dtype=np.float64)
+    mask = np.isfinite(x) & np.isfinite(y)
+    xv, yv = x[mask], y[mask]
+    if xv.size < 10:
+        out = np.full_like(y, np.nan, dtype=float)
+        return out
+
+    X = np.column_stack([xv, xv**2, xv**3])
+    X = sm.add_constant(X)
+    qr = sm.QuantReg(yv, X)
+    m_lo  = qr.fit(q=low_q)
+    m_md  = qr.fit(q=0.5)
+    m_hi  = qr.fit(q=high_q)
+
+    y_lo = m_lo.predict(X)
+    y_md = m_md.predict(X)
+    y_hi = m_hi.predict(X)
+
+    denom = np.maximum(y_hi - y_lo, eps)
+    y_scaled_valid = (yv - y_md) / denom
+
+    out = np.full_like(y, np.nan, dtype=float)
+    out[mask] = y_scaled_valid
+    return out
+
+def zscore_list(arr):
+    arr = np.array(arr)
+    mean = np.nanmean(arr)
+    std = np.nanstd(arr)
+    return (arr - mean) / std if std > 0 else arr - mean
+
+
+
+

@@ -57,7 +57,7 @@ setup()
 """
 
 animal = 'Ruthenium'
-date = '260308'
+date = '260310'
 
 ## now looking at my old code, 01_DAneurons.py
 DANEURONS_PATH_HOME = os.path.join(DROPBOX_TASK_PATH, 'analysis_DAneurons')
@@ -113,106 +113,22 @@ sorted_data = load_ibl_sorter(IBL_SORTER_PATH, animal, date, exp)
 
 #%%
 
+### this should be defined globally -- and it is! also, the color code needs to be updated (thesis one)
 
-### PHOTOMETRY DATA UP UNTIL MARCH 5, run first the new jointdf (daily_photometry.py)
-
-
-
-
-
-## photometry
-jointdf_pkl = glob.glob(rf'{DROPBOX_TASK_PATH}\analysis_photometry\{animal}_{date}*_NEWjointdf.pkl')[0]
-jointdf = pd.read_pickle(jointdf_pkl)
-
-simpledf = jointdf.get(['trialno', 'blockno', 'FI', 'n_protocols', 'lever_index'])
-
-simpledf['trialno_within_block'] = simpledf.groupby('blockno').cumcount()+1
-simpledf['trialno_within_block_from_end'] = -1 * (simpledf.groupby('blockno').cumcount(ascending=False) + 1)
-
-simpledf['animal'] = animal
-simpledf['date'] = date
-simpledf['time_DA'] = jointdf['timestamp_session']
-#### attention here -- ICA or regular DA
-simpledf['DA'] = jointdf['DA_poly_session'] ##### careful with the ICA definitions; before this was 'DA_session', in the ICA jointdf
-#simpledf['DA_ICA'] = jointdf['DA_session_ICA'] ########
-simpledf['trial_start'] = jointdf['trial_start_harp']
-simpledf['trial_end'] = jointdf['trial_end_harp']
-simpledf['lever_rel'] = jointdf['lever_rel_harp']
-simpledf['lever_abs'] = jointdf['lever_abs_harp']
-simpledf['poke_rel'] = jointdf['poke_rel_harp']
-simpledf['poke_abs'] = jointdf['poke_abs_harp']
-simpledf['rwd_onset'] = jointdf['pump_on_harp']
-simpledf['rwd_offset'] = jointdf['pump_off_harp']
-#simpledf['FI'] = (simpledf['FI']/1000).astype(int)
-
-simpledf['cp'] = jointdf['cp_harp']
-simpledf['cp'] = simpledf.apply(lambda x: x.cp if x.cp < x.FI else np.nan, axis = 1)
-simpledf['bool_cp'] = simpledf.cp.apply(lambda x: not(np.isnan(x)))
-
-simpledf['cp_abs'] = simpledf['cp'] + simpledf['trial_start']
-simpledf['rwd_onset_abs'] = simpledf['rwd_onset'] + simpledf['trial_start']
-
-simpledf['lever_rel_FInormalised'] = simpledf['lever_rel'] / simpledf['FI']
-simpledf['cp_FInormalised'] = simpledf['cp'] / simpledf['FI']
-
-simpledf['trial_in_block'] = simpledf.groupby(['blockno']).cumcount() + 1
-simpledf['bool_new_block'] = simpledf['blockno'] != simpledf['blockno'].shift(1)
-
-#simpledf = simpledf.reset_index(drop=True)
-
-for key in ['blockno', 'FI', 'n_protocols']:
-    simpledf[f'prev_{key}'] = simpledf.loc[simpledf['bool_new_block'], key].shift(1)
-    simpledf[f'prev_{key}'] = simpledf[f'prev_{key}'].ffill()
-
-simpledf['time_DA_rel'] = simpledf.apply(lambda x: np.array(x.time_DA) - x.trial_start, axis = 1)
-simpledf['time_DA_after_cp'] = simpledf.apply(lambda x: np.array(x.time_DA_rel) - x.cp, axis = 1)
-
-simpledf['DA_idx_after_cp'] = simpledf.time_DA_after_cp.apply(lambda x: x>=0)
-simpledf['DA_after_cp'] = simpledf.apply(lambda x: np.array(x.DA)[x.DA_idx_after_cp], axis = 1)
-simpledf['DA_before_cp'] = simpledf.apply(lambda x: np.array(x.DA)[~x.DA_idx_after_cp], axis = 1)
-
-
-simpledf['tercile_cp_FInormalised'] = pd.qcut(simpledf['cp_FInormalised'], q=3, labels=['T1', 'T2', 'T3'])
+#simpledf['tercile_cp_FInormalised'] = pd.qcut(simpledf['cp_FInormalised'], q=3, labels=['T1', 'T2', 'T3'])
 terciles_color_dic = {'T1': 'red', 'T2': 'grey', 'T3': 'blue'}
 terciles_labels = ['T1', 'T2', 'T3']
 terciles_colors = ['red', 'grey', 'blue']
 
+
+# %%
+#simpledf['tercile_cp_withinblock'] = (
+#    simpledf.query('blockno < 4').groupby('blockno')['cp']
+#    .transform(lambda x: pd.qcut(x, q=3, labels=['T1', 'T2', 'T3']))
+#)
 #%%
-plt.figure()
-plt.plot(jointdf.trial_duration_harp.values, label = 'photometry')
-plt.plot(syncdf.loc[0:].query('trial_duration_s > 2').trial_duration_s.values, '--', label = 'ephys')
-plt.title('see if trials match')
-plt.legend()
-plt.show()
-# %%
-
-simpledf['npx_trial_start'] =syncdf.query('trial_duration_s > 2').npx_time.values
-
-# %%
-plt.plot(simpledf.trial_start)
-plt.plot(simpledf.npx_trial_start)
-
-#%%
-plt.plot(simpledf.npx_trial_start - simpledf.trial_start)
-# %%
-simpledf['tercile_cp_withinblock'] = (
-    simpledf.query('blockno < 4').groupby('blockno')['cp']
-    .transform(lambda x: pd.qcut(x, q=3, labels=['T1', 'T2', 'T3']))
-)
-
-# %%
-
-"""
-..######.....###....##.....##.########.....######..####.##.....##.########..##.......########.########..########
-.##....##...##.##...##.....##.##..........##....##..##..###...###.##.....##.##.......##.......##.....##.##......
-.##........##...##..##.....##.##..........##........##..####.####.##.....##.##.......##.......##.....##.##......
-..######..##.....##.##.....##.######.......######...##..##.###.##.########..##.......######...##.....##.######..
-.......##.#########..##...##..##................##..##..##.....##.##........##.......##.......##.....##.##......
-.##....##.##.....##...##.##...##..........##....##..##..##.....##.##........##.......##.......##.....##.##......
-..######..##.....##....###....########.....######..####.##.....##.##........########.########.########..##......
-"""
-
-simpledf.to_pickle(rf'{DANEURONS_PATH_HOME}\{animal}_{date}_simpledf.pkl')
+simpledf = pd.read_pickle(rf'{DANEURONS_PATH_HOME}\{animal}_{date}_simpledf.pkl')
+exp = determine_experiment(simpledf)
 
 # %%
 
@@ -502,6 +418,11 @@ plt.axvline(0, color = 'black', lw = .5)
 plt.axvline(.5, color = 'black', lw = .5)
 plt.xlim(-1,1)
 plt.title('last press')
+#%%
+
+
+## OKAY-ISH UNTIL HERE
+
 # %%
 
 """
@@ -519,7 +440,7 @@ print(len(goodtrialsdf))
 
 #%%
 #concatenate the trials of multiple FIs and define the PC space like that
-exp = determine_experiment(syncdf)
+exp = determine_experiment(simpledf)
 print(f'exp {exp}')
 print()
 print(len(goodtrialsdf.query('FI == 15')))

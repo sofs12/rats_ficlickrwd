@@ -51,8 +51,8 @@ setup()
 .##.....##.##....##.####.##.....##.##.....##.########....########..##.....##....##....########
 """
 
-animal = 'Ruthenium'
-date = '260310'
+animal = 'Palladium'
+date = '260311'
 # %%
 
 
@@ -127,26 +127,6 @@ for cluster_id in cluster_info.cluster_id:
 # %%
 
 """
-.##....##.########.##.....##.########...#######..##....##..######.....########..########
-.###...##.##.......##.....##.##.....##.##.....##.###...##.##....##....##.....##.##......
-.####..##.##.......##.....##.##.....##.##.....##.####..##.##..........##.....##.##......
-.##.##.##.######...##.....##.########..##.....##.##.##.##..######.....##.....##.######..
-.##..####.##.......##.....##.##...##...##.....##.##..####.......##....##.....##.##......
-.##...###.##.......##.....##.##....##..##.....##.##...###.##....##....##.....##.##......
-.##....##.########..#######..##.....##..#######..##....##..######.....########..##......
-"""
-neuronsdf = cluster_info #.query('n_spikes > 1000 and KSLabel in ["good","mua"]')
-
-neuronsdf['spike_times'] = neuronsdf.cluster_id.apply(lambda x: sorted_data.spike_times[sorted_data.spike_clusters == x]/sorted_data.sampling_frequency)
-neuronsdf['spikes_self_aligned'] = spikes_self_aligned_all
-neuronsdf['cell_type'] = neuronsdf.apply(lambda x: determine_cell_type(x.cluster_id,sorted_data,syncdf) if x.group == 'good' else np.nan, axis = 1)
-
-neuronsdf.to_pickle(fr'{SAVE_SYNC_PATH}\neuronsdf.pkl')
-
-
-#%%
-
-"""
 ..######...#######..########..########.########.########.....########.....###....########....###......
 .##....##.##.....##.##.....##....##....##.......##.....##....##.....##...##.##......##......##.##.....
 .##.......##.....##.##.....##....##....##.......##.....##....##.....##..##...##.....##.....##...##....
@@ -163,6 +143,26 @@ DATACLASS_PATH = rf"{DROPBOX_TASK_PATH}\analysis_ephys\{animal}_{date}_sorted_da
 
 with open(DATACLASS_PATH, 'wb') as f:
     pickle.dump(sorted_data, f)
+
+#%%
+
+"""
+.##....##.########.##.....##.########...#######..##....##..######.....########..########
+.###...##.##.......##.....##.##.....##.##.....##.###...##.##....##....##.....##.##......
+.####..##.##.......##.....##.##.....##.##.....##.####..##.##..........##.....##.##......
+.##.##.##.######...##.....##.########..##.....##.##.##.##..######.....##.....##.######..
+.##..####.##.......##.....##.##...##...##.....##.##..####.......##....##.....##.##......
+.##...###.##.......##.....##.##....##..##.....##.##...###.##....##....##.....##.##......
+.##....##.########..#######..##.....##..#######..##....##..######.....########..##......
+"""
+neuronsdf = cluster_info #.query('n_spikes > 1000 and KSLabel in ["good","mua"]')
+
+neuronsdf['spike_times'] = neuronsdf.cluster_id.apply(lambda x: sorted_data.spike_times[sorted_data.spike_clusters == x]/sorted_data.sampling_frequency)
+neuronsdf['spikes_self_aligned'] = spikes_self_aligned_all
+neuronsdf['cell_type'] = neuronsdf.apply(lambda x: determine_cell_type(x.cluster_id,sorted_data,syncdf) if x.group == 'good' else np.nan, axis = 1)
+
+neuronsdf.to_pickle(fr'{SAVE_SYNC_PATH}\neuronsdf.pkl')
+
 
 #%%
 
@@ -193,6 +193,8 @@ rising_edges = syncdf.query('trial_duration_s > 2').npx_time.values
 
 #%%
 
+print('quick figures being produced')
+
 for cluster in good_clusters:
     produce_neuron_fig(cluster, rising_edges, sorted_data, window = (-10,10), save_fig=True, fig_save_path=PATH_SAVE_FIGS)
 
@@ -215,6 +217,7 @@ for cluster in good_clusters:
 ..######..##..........########.##.....##.########..########.########
 """
 
+print('multiple alignment figures being produced')
 
 SFgood_path = rf'{PATH_SAVE_FIGS}\SF_good'
 if not(os.path.exists(SFgood_path)):
@@ -234,7 +237,8 @@ SFok = cluster_info.query('SF == "ok"').cluster_id.values
 for cluster_id in SFok:
     produce_mega_neuron_fig(cluster_id, sorted_data, syncdf, neuronsdf, fig_save_path=SFok_path, bool_click = False, bool_cp_corrected = False)
 
-
+print('all done! :)')
+print('')
 #%%
 
 ## AND THEN THERE'S A BUNCH OF CODE FOR POPULATION STUFF AND PCA; but this should already be somewhere else
