@@ -19,12 +19,14 @@ import numpy as np
 import seaborn as sns
 from scipy.stats import zscore
 from scipy.signal import savgol_filter
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.colors as mcolors
 
 from ratcode.config.paths import PATH_STORE_PICKLES, DROPBOX_TASK_PATH, PATH_DATAFRAMES
 from ratcode.common.logging import determine_experiment
 from ratcode.common.colorcodes import *
 from ratcode.behavior import change_point
-from ratcode.photometry.photometry import get_prediction, quantile_regression, signal2eventsnippets, find_poly, segment_and_fit_function, butter_filter, mask_jumps, make_continuous, compute_snippets_across_days
+from ratcode.photometry.photometry import get_prediction, quantile_regression, signal2eventsnippets, find_poly, segment_and_fit_function, butter_filter, mask_jumps, make_continuous, compute_snippets_across_days, drop_nan_rows_in_matrix, bootstrap_ci, plot_snippets
 from ratcode.common.dataframe import group_and_listify
 from ratcode.common.time import convert_date_bonsai, convert_timestamp
 from ratcode.common.math import drop_nans_matrix
@@ -38,11 +40,15 @@ import matplotlib.cm as cm
 tercile_colors = ['#D95F02', '#B0B0B0', '#1B9E77']
 tercile_list = ['T1', 'T2', 'T3']
 tercile_rateH_colors = [cm.get_cmap('copper')(1-ii*.35) for ii in range(3)]
+
+bone_cmap = cm.get_cmap('bone')
+cmap_FI = mcolors.ListedColormap(color_FI_blocks)
+cmap_rwd = mcolors.ListedColormap(color_rwd_blocks)
 # %%
 
 #PHOTOMETRY_PATH = os.path.join(DROPBOX_TASK_PATH, 'photometry', animal)
 PATH_SAVE_DFS = os.path.join(DROPBOX_TASK_PATH, 'analysis_photometry')
-
+PATH_SAVE_AGGREGATE_DA_FIGS = os.path.join(PATH_SAVE_DFS, 'aggregated_DAta')
 #%%
 
 aggregated_jointdf = []
@@ -79,7 +85,7 @@ def zscore_session_arrays(group):
     
     return group.apply(lambda x: (np.array(x) - mu) / sigma)
 
-aggregated_jointdf['DA_session_zscored'] = aggregated_jointdf.groupby(['animal', 'date'])['DA_poly_session'].transform(zscore_session_arrays)
+aggregated_jointdf['DA_zscored_session'] = aggregated_jointdf.groupby(['animal', 'date'])['DA_poly_session'].transform(zscore_session_arrays)
 
 #%%
 
@@ -98,7 +104,6 @@ aggregated_jointdf.drop(cols_to_drop, axis = 1, inplace = True)
 rename_dict = {
         'timestamp_session': 'time_DA',
         'predicted_gfp_session': 'predicted_gfp',
-        'DA_session_zscored': 'DA_zscored_session',
         'trial_start_harp': 'trial_start',
         'trial_end_harp': 'trial_end',
         'trial_duration_harp': 'trial_duration',
@@ -167,10 +172,6 @@ aggregated_jointdf['cp_FInormalised'] = aggregated_jointdf.cp/aggregated_jointdf
 
 #aggregated_jointdf['DA_trial_zscored'] = aggregated_jointdf.DA.apply(lambda x: compute_zscore(x))
 
-
-#%%
-aggregated_jointdf.to_pickle(rf'{PATH_DATAFRAMES}\aggregate_photometry_Palladium_Ruthenium.pkl')
-
 #%%
 
 
@@ -205,6 +206,23 @@ def categorize_presses(presses): ## exclude the last press from the terciles cat
     return labels
 
 aggregated_jointdf['lever_index_category'] = aggregated_jointdf.lever_rel.apply(categorize_presses)
+
+aggregated_jointdf.to_pickle(rf'{PATH_DATAFRAMES}\aggregate_photometry_Palladium_Ruthenium.pkl')
+#%%
+
+"""
+.####.##.....##.########...#######..########..########.......###.....######....######...########..########..######......###....########.########....##.....##.########.########..########
+..##..###...###.##.....##.##.....##.##.....##....##.........##.##...##....##..##....##..##.....##.##.......##....##....##.##......##....##..........##.....##.##.......##.....##.##......
+..##..####.####.##.....##.##.....##.##.....##....##........##...##..##........##........##.....##.##.......##.........##...##.....##....##..........##.....##.##.......##.....##.##......
+..##..##.###.##.########..##.....##.########.....##.......##.....##.##...####.##...####.########..######...##...####.##.....##....##....######......#########.######...########..######..
+..##..##.....##.##........##.....##.##...##......##.......#########.##....##..##....##..##...##...##.......##....##..#########....##....##..........##.....##.##.......##...##...##......
+..##..##.....##.##........##.....##.##....##.....##.......##.....##.##....##..##....##..##....##..##.......##....##..##.....##....##....##..........##.....##.##.......##....##..##......
+.####.##.....##.##.........#######..##.....##....##.......##.....##..######....######...##.....##.########..######...##.....##....##....########....##.....##.########.##.....##.########
+"""
+aggregated_jointdf = pd.read_pickle(rf'{PATH_DATAFRAMES}\aggregate_photometry_Palladium_Ruthenium.pkl')
+
+
+
 
 #%%%
 
@@ -295,16 +313,14 @@ axs[0].set_ylabel('DA (z ΔF/F)')
 figtitle = f'{animal} all | DA aligned to {alignment_labels[alignment_idx]}{baseline_title} | {DA_column}'
 #figtitle = f'{animal} all | DA aligned to {alignment_labels[alignment_idx]}{baseline_title}_RPE'
 fig.suptitle(figtitle)
-#fig.savefig(fr'{photometry_fig_path}\{figtitle.replace('|', '_')}.png')
+fig.savefig(fr'{PATH_SAVE_AGGREGATE_DA_FIGS}\{figtitle.replace('|', '_')}.png')
 #fig.savefig(fr'{photometry_fig_path}\{figtitle.replace('|', '_')}.pdf')
 
 
 #%%
 
 
-#### NOT UPDATED
-
-animal = 'Ruthenium'
+animal = 'Palladium'
 df = aggregated_jointdf.query(f'animal == "{animal}"')# and date in {photometry_dates_dict[animal]}')
 time, snippets_cp = compute_snippets_across_days(df,f'bool_cp', 'last_lever_abs','DA_zscored_session', (-4,4))
 time, snippets_nocp = compute_snippets_across_days(df,f'bool_cp == False', 'last_lever_abs','DA_zscored_session', (-4,4))
@@ -337,7 +353,7 @@ axs[0,0].imshow(snippets_a, vmin = vmin, vmax = vmax, aspect = 'auto', cmap = bo
                 extent = [time[0], time[-1], len(snippets_a), 1])
 
 for ii in range(3):
-    axs[1,0].plot(time, np.nanmedian(snippets_a[FI_a == FI_list[ii]], axis = 0), color = color_FI_blocks[ii])
+    axs[1,0].plot(time, np.nanmedian(snippets_a[FI_a == FI_order[ii]], axis = 0), color = color_FI_blocks[ii])
 
 ax_FI = inset_axes(axs[0,0], width="4%", height="100%", loc="center left", borderpad=0)
 ax_FI.matshow(FI_a.reshape(len(FI_a),1), aspect = 'auto', cmap = cmap_FI)
@@ -353,7 +369,7 @@ ax_FI.set_axis_off()
 exp = 'b'
 snippets_b = []
 FI_b = []
-for FI in FI_list:
+for FI in FI_order:
     time, snippets = compute_snippets_across_days(df,
         f'experiment == "{exp}" and FI == {FI}', alignments[alignment_idx], DA_column, window)
     snippets = drop_nan_rows_in_matrix(snippets)
@@ -370,7 +386,7 @@ axs[0,1].imshow(snippets_b, vmin = vmin, vmax = vmax, aspect = 'auto', cmap = bo
                 extent = [time[0], time[-1], len(snippets_b), 1])
 
 for ii in range(3):
-    axs[1,1].plot(time, np.nanmedian(snippets_b[FI_b == FI_list[ii]], axis = 0), color = color_FI_blocks[ii])
+    axs[1,1].plot(time, np.nanmedian(snippets_b[FI_b == FI_order[ii]], axis = 0), color = color_FI_blocks[ii])
 
 ax_FI = inset_axes(axs[0,1], width="4%", height="100%", loc="center left", borderpad=0)
 ax_FI.matshow(FI_b.reshape(len(FI_b),1), aspect = 'auto', cmap = cmap_FI)
@@ -386,7 +402,7 @@ ax_FI.set_axis_off()
 exp = 'c'
 snippets_c = []
 rwd_c = []
-for nprots in nprots_list:
+for nprots in rwd_order:
     time, snippets = compute_snippets_across_days(df,
         f'experiment == "{exp}" and n_protocols == {nprots}', alignments[alignment_idx], DA_column, window)
     snippets = drop_nan_rows_in_matrix(snippets)
@@ -403,13 +419,13 @@ axs[0,2].imshow(snippets_c, vmin = vmin, vmax = vmax, aspect = 'auto', cmap = bo
                 extent = [time[0], time[-1], len(snippets_c), 1])
 
 for ii in range(3):
-    axs[1,2].plot(time, np.nanmedian(snippets_c[rwd_c == nprots_list[ii]], axis = 0), color = color_nprots_blocks[ii])
+    axs[1,2].plot(time, np.nanmedian(snippets_c[rwd_c == rwd_order[ii]], axis = 0), color = color_rwd_blocks[ii])
 
 ax_rwd = inset_axes(axs[0,2], width="4%", height="100%", loc="center left", borderpad=0)
-ax_rwd.matshow(rwd_c.reshape(len(rwd_c),1), aspect = 'auto', cmap = cmap_nprots)
+ax_rwd.matshow(rwd_c.reshape(len(rwd_c),1), aspect = 'auto', cmap = cmap_rwd)
 ax_rwd.set_axis_off()
 ax_rwd = inset_axes(axs[0,2], width="4%", height="100%", loc="center right", borderpad=0)
-ax_rwd.matshow(rwd_c.reshape(len(rwd_c),1), aspect = 'auto', cmap = cmap_nprots)
+ax_rwd.matshow(rwd_c.reshape(len(rwd_c),1), aspect = 'auto', cmap = cmap_rwd)
 ax_rwd.set_axis_off()
 
 
@@ -430,11 +446,60 @@ axs[1,0].set_ylabel('DA (a.u.)')
 figtitle = f'{animal} all | DA aligned to {alignment_labels[alignment_idx]}{baseline_title} | with heatmap'
 #figtitle = f'{animal} all | DA aligned to {alignment_labels[alignment_idx]}{baseline_title}_RPE'
 fig.suptitle(figtitle)
-#fig.savefig(fr'{photometry_fig_path}\{figtitle.replace('|', '_')}.png')
+fig.savefig(fr'{PATH_SAVE_AGGREGATE_DA_FIGS}\{figtitle.replace('|', '_')}.png')
+#%%
+
+
+#### some issues with Palladium's data
+## for sure juumps in the DA session data; look at day by day weird stuff. maybe we just need to acquire more clean data from exp c from this guy
+
+
+plt.plot(df.query('experiment == "c" and n_protocols == 7').DA_zscored_session.apply(lambda x: np.mean(x)).values)
+plt.plot(df.query('experiment == "c" and n_protocols == 14').DA_zscored_session.apply(lambda x: np.mean(x)).values)
+plt.plot(df.query('experiment == "c" and n_protocols == 28').DA_zscored_session.apply(lambda x: np.mean(x)).values)
+#%%
+
+dates = df.query('experiment == "c" and n_protocols == 7').date.unique()
+#%%
+time, snippets = compute_snippets_across_days(df,
+    f'experiment == "c" and n_protocols == 7 and date in {list(dates)}', alignments[alignment_idx], 'DA_poly_session', window)
+#snippets = drop_nan_rows_in_matrix(snippets)
+plt.figure()
+plt.imshow(snippets, aspect = 'auto')
+#plt.title(date)
+plt.show()
+#%%
+df.query('experiment == "c"').date.unique()
+#%%
+for rr in rwd_order:
+    plt.figure()
+    sns.histplot(np.hstack(snippets_c[rwd_c == rr]))
+    plt.show()
+
+#%%
+plt.imshow(zscore(snippets_c, axis = 1))
+#%%
+for rr in rwd_order:
+    plt.plot(np.nanmean(zscore(snippets_c, axis = 1)[rwd_c == rr], axis = 0))
 
 
 #%%
 
+aggregated_jointdf['tercile_cp_FInormalised'] = (
+    aggregated_jointdf.query('bool_cp')
+    .groupby('animaldate')['cp_FInormalised']
+    .transform(lambda x: pd.qcut(x, q=3, labels=tercile_list))
+)
+
+aggregated_jointdf['tercile_cp_FInormalised_withinFI'] = (
+    aggregated_jointdf.query('animal in ["Zirconium", "Niobium"] and bool_cp')
+    .groupby(['animaldate','FI','n_protocols'])['cp_FInormalised']
+    .transform(lambda x: pd.qcut(x, q=3, labels=tercile_list))
+)
+#%%
+
+aggregated_jointdf['count_lever'] = aggregated_jointdf.lever_rel.apply(lambda x: len(x))
+#%%
 """
 .########.##.....##.########..##........#######..########..########.########.....########..########
 .##........##...##..##.....##.##.......##.....##.##.....##.##.......##.....##....##.....##.##......
@@ -486,10 +551,10 @@ def align_DA_to_ttls(blocksdf, ttl_column, DA_column = 'DA_zscored_per_session',
     all_snippets = np.vstack(all_snippets)
 
     return aligned_snippets, time, all_snippets
-
-
-###### where do I compute the lever index? do this again -- missing for the earlier dates
-
+#%%
+aggregated_jointdf.animaldate[aggregated_jointdf.apply(lambda x: type(x.lever_index), axis = 1) == float].unique()
+#%%
+#exploded_df = aggregated_jointdf.query(f'date in {list(dates)}').explode(['lever_abs','lever_index', 'lever_index_category'])
 exploded_df = aggregated_jointdf.explode(['lever_abs','lever_index', 'lever_index_category'])
 exploded_df = exploded_df[exploded_df['lever_index'].notna()]  # Remove NaNs
 exploded_df['lever_index'] = pd.to_numeric(exploded_df['lever_index'], errors='coerce')  # Ensure numeric
@@ -498,9 +563,733 @@ _, time, all_snippets = align_DA_to_ttls(exploded_df, 'lever_abs', 'DA_zscored_s
 # Discard rows with NaNs
 cleaned_snippets = all_snippets[~np.isnan(all_snippets).any(axis=1)]
 
+#%%
+
+
+fig, axs = plt.subplots(1,2, tight_layout = True, figsize = (8,4))
+
+rwd_color = bone_cmap(.2)
+non_rwd_color = bone_cmap(.7)
+
+t_4 = np.linspace(-2,2,401)
+
+animal = 'Ruthenium'
+non_rwd_mask = (exploded_df['lever_index'] < -1) & (exploded_df['animal'] == animal)
+rwd_mask = (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+
+median, lower, upper = bootstrap_ci(all_snippets[non_rwd_mask], n_boot=500, smooth_sigma=5)
+axs[0].plot(t_4, median, color = non_rwd_color, lw = 2, label = 'unrewarded press')
+axs[0].fill_between(t_4, lower, upper, color=non_rwd_color, alpha=0.2)
+
+median, lower, upper = bootstrap_ci(all_snippets[rwd_mask], n_boot=500, smooth_sigma=5)
+axs[0].plot(t_4, median, color = rwd_color, lw = 2, label = 'rewarded press')
+axs[0].fill_between(t_4, lower, upper, color=rwd_color, alpha=0.2)
+
+#axs[0].plot(np.nanmean(all_snippets[non_rwd_mask], axis = 0), color = bone_cmap(0.7), lw = 2)
+#axs[0].plot(np.nanmean(all_snippets[rwd_mask], axis = 0), color = bone_cmap(0.2), lw = 2)
+
+animal = 'Palladium'
+non_rwd_mask = (exploded_df['lever_index'] < -1) & (exploded_df['animal'] == animal)
+rwd_mask = (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+#axs[1].plot(np.nanmean(all_snippets[non_rwd_mask], axis = 0), color = bone_cmap(0.7), lw = 2)
+#axs[1].plot(np.nanmean(all_snippets[rwd_mask], axis = 0), color = bone_cmap(0.2), lw = 2)
+
+median, lower, upper = bootstrap_ci(all_snippets[non_rwd_mask], n_boot=500, smooth_sigma=5)
+axs[1].plot(t_4, median, color = non_rwd_color, lw = 2, label = 'unrewarded')
+axs[1].fill_between(t_4, lower, upper, color=non_rwd_color, alpha=0.2)
+
+median, lower, upper = bootstrap_ci(all_snippets[rwd_mask], n_boot=500, smooth_sigma=5)
+axs[1].plot(t_4, median, color = rwd_color, lw = 2, label = 'rewarded')
+axs[1].fill_between(t_4, lower, upper, color=rwd_color, alpha=0.2)
+
+[axs[ii].axvline(0, color = 'grey', ls = '--') for ii in range(2)]
+[axs[ii].set_xlabel('time since lever press (s)') for ii in range(2)]
+
+axs[0].set_ylabel('DA (z ΔF/F)')
+
+axs[1].legend(frameon = False, fontsize = 12)
+
+axs[0].set_title('Ruthenium')
+axs[1].set_title('Palladium')
+
+figtitle = 'DA aligned to rewarded and unrewarded lever presses'
+plt.suptitle(figtitle)
+
+plt.savefig(rf'{PATH_SAVE_AGGREGATE_DA_FIGS}\{figtitle.replace('|','_')}.png')
+#plt.savefig(rf'{photometry_fig_path}\{figtitle.replace('|','_')}.pdf')
+
+#%%
+
+fig, axs = plt.subplots(1,2, tight_layout = True, figsize = (8,4))
+
+labels = ['initial', 'middle', 'pre-terminal']
+
+animal = 'Ruthenium'
+mask_presses_t1 = (exploded_df['bool_cp'] == True) & (exploded_df['lever_index_category'] == 't1') & (exploded_df['animal'] == animal)
+mask_presses_t2 = (exploded_df['bool_cp'] == True) & (exploded_df['lever_index_category'] == 't2') & (exploded_df['animal'] == animal)
+mask_presses_t3 = (exploded_df['bool_cp'] == True) & (exploded_df['lever_index_category'] == 't3') & (exploded_df['animal'] == animal)
+mask_presses_last = (exploded_df['bool_cp'] == True) & (exploded_df['lever_index_category'] == 'last') & (exploded_df['animal'] == animal)
+masks = [mask_presses_t1, mask_presses_t2, mask_presses_t3]
+
+for ii, mask in enumerate(masks):
+
+    color = bone_cmap(.8-.2*ii) ## start with 0.2 if including the last lever press
+    
+    median, lower, upper = bootstrap_ci(all_snippets[mask], n_boot=50, smooth_sigma=5)
+    axs[0].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+    axs[0].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+
+animal = 'Palladium'
+mask_presses_t1 = (exploded_df['bool_cp'] == True) & (exploded_df['lever_index_category'] == 't1') & (exploded_df['animal'] == animal)
+mask_presses_t2 = (exploded_df['bool_cp'] == True) & (exploded_df['lever_index_category'] == 't2') & (exploded_df['animal'] == animal)
+mask_presses_t3 = (exploded_df['bool_cp'] == True) & (exploded_df['lever_index_category'] == 't3') & (exploded_df['animal'] == animal)
+mask_presses_last = (exploded_df['bool_cp'] == True) & (exploded_df['lever_index_category'] == 'last') & (exploded_df['animal'] == animal)
+masks = [mask_presses_t1, mask_presses_t2, mask_presses_t3]
+
+for ii, mask in enumerate(masks):
+
+    color = bone_cmap(.8-.2*ii)
+    
+    median, lower, upper = bootstrap_ci(all_snippets[mask], n_boot=50, smooth_sigma=5)
+    axs[1].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+    axs[1].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+[axs[ii].axvline(0, color = 'grey', ls = '--') for ii in range(2)]
+[axs[ii].set_xlabel('time since lever press (s)') for ii in range(2)]
+
+axs[0].set_ylabel('DA (z ΔF/F)')
+
+axs[1].legend(frameon = False, fontsize = 12)
+
+axs[0].set_title('Ruthenium')
+axs[1].set_title('Palladium')
+
+figtitle = 'DA aligned to unrewarded lever presses | split by early vs late presses'
+#figtitle = 'DA aligned to rewarded and unrewarded lever presses | split by early vs late presses'
+plt.suptitle(figtitle)
+
+plt.savefig(rf'{PATH_SAVE_AGGREGATE_DA_FIGS}\{figtitle.replace('|','_')}.png')
+#plt.savefig(rf'{photometry_fig_path}\{figtitle.replace('|','_')}.pdf')
 
 
 #%%
+#aggregated_jointdf['rateH'] = aggregated_jointdf.query('bool_cp').apply(lambda x: len(x.lever_rel[x.lever_rel >= x.cp])/(x.trial_duration - x.cp), axis = 1)
+#
+#aggregated_jointdf['tercile_rateH'] = (
+#    aggregated_jointdf['rateH']
+#    #.groupby(['FI'])['cp']
+#    .transform(terciles)
+#)
+#%%
+fig, axs = plt.subplots(1,2, tight_layout = True, figsize = (8,4))
+
+color_non_transition = '#1b6a9e'
+labels = ['early', 'intermediate', 'late', 'later-than-FI']
+
+animal = 'Ruthenium'
+
+mask_cp_T1 = (exploded_df['tercile_cp_FInormalised'] == 'T1') & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+mask_cp_T2 = (exploded_df['tercile_cp_FInormalised'] == 'T2') & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+mask_cp_T3 = (exploded_df['tercile_cp_FInormalised'] == 'T3') & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+#mask_cp_trial = (exploded_df['bool_cp'] == True) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+mask_nocp_trial = (exploded_df['bool_cp'] == False) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+masks = [mask_cp_T1,mask_cp_T2, mask_cp_T3, mask_nocp_trial]
+
+for ii, mask in enumerate(masks):
+
+    color = tercile_colors[ii] if ii < 3 else color_non_transition
+    
+    median, lower, upper = bootstrap_ci(all_snippets[mask], n_boot=50, smooth_sigma=5)
+    axs[0].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+    axs[0].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+
+animal = 'Palladium'
+
+mask_cp_T1 = (exploded_df['tercile_cp_FInormalised'] == 'T1') & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+mask_cp_T2 = (exploded_df['tercile_cp_FInormalised'] == 'T2') & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+mask_cp_T3 = (exploded_df['tercile_cp_FInormalised'] == 'T3') & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+#mask_cp_trial = (exploded_df['bool_cp'] == True) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+mask_nocp_trial = (exploded_df['bool_cp'] == False) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+masks = [mask_cp_T1,mask_cp_T2, mask_cp_T3, mask_nocp_trial]
+
+for ii, mask in enumerate(masks):
+
+    color = tercile_colors[ii] if ii < 3 else color_non_transition
+    
+    median, lower, upper = bootstrap_ci(all_snippets[mask], n_boot=50, smooth_sigma=5)
+    axs[1].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+    axs[1].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+
+[axs[ii].axvline(0, color = 'grey', ls = '--') for ii in range(2)]
+[axs[ii].set_xlabel('time since lever press (s)') for ii in range(2)]
+
+axs[0].set_ylabel('DA (z ΔF/F)')
+
+axs[1].legend(frameon = False, fontsize = 11)
+
+axs[0].set_title('Ruthenium')
+axs[1].set_title('Palladium')
+
+figtitle = 'DA aligned to last lever press | conditioned by transition point'
+plt.suptitle(figtitle)
+
+plt.savefig(rf'{PATH_SAVE_AGGREGATE_DA_FIGS}\{figtitle.replace('|','_')}.png')
+#plt.savefig(rf'{photometry_fig_path}\{figtitle.replace('|','_')}.pdf')
+
+#%%
+fig, axs = plt.subplots(1,2, tight_layout = True, figsize = (8,4))
+
+labels = ['early', 'intermediate', 'late', 'later-than-FI']
+
+animal = 'Ruthenium'
+df = aggregated_jointdf.query(f'animal == "{animal}"')# and date in {photometry_dates_dict[animal]}')
+_, snippets_cp_T1 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T1"', 'cp_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_T2 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T2"', 'cp_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_T3 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T3"', 'cp_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_afterFI = compute_snippets_across_days(df,f'bool_cp == False and count_lever < 3', 'last_lever_abs','DA_zscored_session', (-2,2))
+
+all_cp_snippets = [snippets_cp_T1, snippets_cp_T2, snippets_cp_T3]
+
+for ii, snippets in enumerate(all_cp_snippets):
+    color = tercile_colors[ii] if ii < 3 else color_non_transition
+
+    median, lower, upper = bootstrap_ci(snippets, n_boot=50, smooth_sigma=5)
+    axs[0].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+    axs[0].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+## pre lever later-than-FI presses
+mask_nocp_trial = (exploded_df['count_lever'] < 3) & (exploded_df['bool_cp'] == False) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+median, lower, upper = bootstrap_ci(all_snippets[mask_nocp_trial], n_boot=50, smooth_sigma=5)
+axs[0].plot(t_4[:200], median[:200], color = color_non_transition, lw = 2, label = labels[ii])
+axs[0].fill_between(t_4[:200], lower[:200], upper[:200], color=color_non_transition, alpha=0.2)
+
+
+animal = 'Palladium'
+df = aggregated_jointdf.query(f'animal == "{animal}"')# and date in {photometry_dates_dict[animal]}')
+_, snippets_cp_T1 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T1"', 'cp_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_T2 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T2"', 'cp_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_T3 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T3"', 'cp_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_afterFI = compute_snippets_across_days(df,f'bool_cp == False and count_lever == 1', 'last_lever_abs','DA_zscored_session', (-2,2))
+
+all_cp_snippets = [snippets_cp_T1, snippets_cp_T2, snippets_cp_T3]
+
+for ii, snippets in enumerate(all_cp_snippets):
+    color = tercile_colors[ii] if ii < 3 else color_non_transition
+
+    median, lower, upper = bootstrap_ci(snippets, n_boot=50, smooth_sigma=5)
+    axs[1].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+    axs[1].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+## pre lever later-than-FI presses
+mask_nocp_trial = (exploded_df['count_lever'] < 3) & (exploded_df['bool_cp'] == False) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+median, lower, upper = bootstrap_ci(all_snippets[mask_nocp_trial], n_boot=50, smooth_sigma=5)
+axs[1].plot(t_4[:200], median[:200], color = color_non_transition, lw = 2, label = labels[-1])
+axs[1].fill_between(t_4[:200], lower[:200], upper[:200], color=color_non_transition, alpha=0.2)
+
+
+[axs[ii].axvline(0, color = 'grey', ls = '--') for ii in range(2)]
+[axs[ii].set_xlabel('time since lever press (s)') for ii in range(2)]
+
+axs[0].set_ylabel('DA (z ΔF/F)')
+
+axs[1].legend(frameon = False, fontsize = 11)
+
+axs[0].set_title('Ruthenium')
+axs[1].set_title('Palladium')
+
+figtitle = 'DA aligned to transition point | conditioned by transition point'
+plt.suptitle(figtitle)
+
+plt.savefig(rf'{PATH_SAVE_AGGREGATE_DA_FIGS}\{figtitle.replace('|','_')}.png')
+#plt.savefig(rf'{photometry_fig_path}\{figtitle.replace('|','_')}.pdf')
+#%%
+fig, axs = plt.subplots(1,2, tight_layout = True, figsize = (8,4))
+
+labels = ['early', 'intermediate', 'late', 'later-than-FI']
+
+animal1 = 'Ruthenium'
+animal2 = 'Palladium'
+
+animal = animal1
+df = aggregated_jointdf.query(f'animal == "{animal}"')# and date in {photometry_dates_dict[animal]}')
+_, snippets_cp_T1 = compute_snippets_across_days(df,f'bool_cp and experiment == "a" and tercile_cp_FInormalised == "T1"', 'last_lever_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_T2 = compute_snippets_across_days(df,f'bool_cp and experiment == "a" and tercile_cp_FInormalised == "T2"', 'last_lever_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_T3 = compute_snippets_across_days(df,f'bool_cp and experiment == "a" and tercile_cp_FInormalised == "T3"', 'last_lever_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_afterFI = compute_snippets_across_days(df,f'bool_cp == False and experiment == "a" and count_lever < 3', 'last_lever_abs','DA_zscored_session', (-2,2))
+
+all_cp_snippets = [snippets_cp_T1, snippets_cp_T2, snippets_cp_T3]
+
+for ii, snippets in enumerate(all_cp_snippets):
+    color = tercile_colors[ii] if ii < 3 else color_non_transition
+
+    median, lower, upper = bootstrap_ci(snippets, n_boot=50, smooth_sigma=5)
+    axs[0].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+    axs[0].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+## pre lever later-than-FI presses
+mask_nocp_trial = (exploded_df['count_lever'] < 3) & (exploded_df['bool_cp'] == False) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+median, lower, upper = bootstrap_ci(all_snippets[mask_nocp_trial], n_boot=50, smooth_sigma=5)
+axs[0].plot(t_4, median, color = color_non_transition, lw = 2, label = labels[ii])
+axs[0].fill_between(t_4, lower, upper, color=color_non_transition, alpha=0.2)
+
+
+animal = animal2
+df = aggregated_jointdf.query(f'animal == "{animal}"')# and date in {photometry_dates_dict[animal]}')
+_, snippets_cp_T1 = compute_snippets_across_days(df,f'bool_cp and experiment == "a" and tercile_cp_FInormalised == "T1"', 'last_lever_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_T2 = compute_snippets_across_days(df,f'bool_cp and experiment == "a" and tercile_cp_FInormalised == "T2"', 'last_lever_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_T3 = compute_snippets_across_days(df,f'bool_cp and experiment == "a" and tercile_cp_FInormalised == "T3"', 'last_lever_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_afterFI = compute_snippets_across_days(df,f'bool_cp == False and experiment == "a" and count_lever == 1', 'last_lever_abs','DA_zscored_session', (-2,2))
+
+all_cp_snippets = [snippets_cp_T1, snippets_cp_T2, snippets_cp_T3]
+
+for ii, snippets in enumerate(all_cp_snippets):
+    color = tercile_colors[ii] if ii < 3 else color_non_transition
+
+    median, lower, upper = bootstrap_ci(snippets, n_boot=50, smooth_sigma=5)
+    axs[1].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+    axs[1].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+## pre lever later-than-FI presses
+mask_nocp_trial = (exploded_df['count_lever'] < 3) & (exploded_df['bool_cp'] == False) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+median, lower, upper = bootstrap_ci(all_snippets[mask_nocp_trial], n_boot=50, smooth_sigma=5)
+axs[1].plot(t_4, median, color = color_non_transition, lw = 2, label = labels[-1])
+axs[1].fill_between(t_4, lower, upper, color=color_non_transition, alpha=0.2)
+
+
+[axs[ii].axvline(0, color = 'grey', ls = '--') for ii in range(2)]
+[axs[ii].set_xlabel('time since last press (s)') for ii in range(2)]
+
+axs[0].set_ylabel('DA (z ΔF/F)')
+
+axs[1].legend(frameon = False, fontsize = 11)
+
+axs[0].set_title(animal1)
+axs[1].set_title(animal2)
+
+figtitle = 'DA aligned to last press | conditioned by transition point | exp a same rwd magnitude'
+plt.suptitle(figtitle)
+
+plt.savefig(rf'{PATH_SAVE_AGGREGATE_DA_FIGS}\{figtitle.replace('|','_')}.png')
+#plt.savefig(rf'{photometry_fig_path}\{figtitle.replace('|','_')}.pdf')
+
+#%%
+animal = animal1
+
+n_bot = 500
+
+t_4 = np.linspace(-2,2,401)
+color_non_transition = '#1b6a9e'
+labels = ['early', 'intermediate', 'late', 'later-than-FI']
+
+fig, axs = plt.subplots(1,5, tight_layout = True, figsize = (12,4), width_ratios=[3,1,1,1,3], sharey = True)
+
+
+df = aggregated_jointdf.query(f'animal == "{animal}"')# and date in {photometry_dates_dict[animal]}')
+_, snippets_cp_T1 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T1"', 'cp_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_T2 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T2"', 'cp_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_T3 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T3"', 'cp_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_afterFI = compute_snippets_across_days(df,f'bool_cp == False and count_lever < 3', 'last_lever_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_afterFI = compute_snippets_across_days(df,f'bool_cp == False and count_lever == 1', 'last_lever_abs','DA_zscored_session', (-2,2))
+
+all_cp_snippets = [snippets_cp_T1, snippets_cp_T2, snippets_cp_T3]
+
+for ii, snippets in enumerate(all_cp_snippets):
+    color = tercile_colors[ii] if ii < 3 else color_non_transition
+
+    median, lower, upper = bootstrap_ci(snippets, n_boot=n_bot, smooth_sigma=5)
+    axs[0].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+    axs[0].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+
+
+mask_cp_T1 = (exploded_df['tercile_cp_FInormalised'] == 'T1') & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+mask_cp_T2 = (exploded_df['tercile_cp_FInormalised'] == 'T2') & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+mask_cp_T3 = (exploded_df['tercile_cp_FInormalised'] == 'T3') & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+masks = [mask_cp_T1,mask_cp_T2, mask_cp_T3]
+
+for ii, mask in enumerate(masks):
+
+    color = tercile_colors[ii] if ii < 3 else color_non_transition
+    
+    median, lower, upper = bootstrap_ci(all_snippets[mask], n_boot=n_bot, smooth_sigma=5)
+    axs[-1].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+    axs[-1].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+
+
+
+## pre lever later-than-FI presses
+mask_nocp_trial = (exploded_df['count_lever'] < 3) & (exploded_df['bool_cp'] == False) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+median_noncp, lower_noncp, upper_noncp = bootstrap_ci(all_snippets[mask_nocp_trial], n_boot=50, smooth_sigma=5)
+
+axs[0].plot(t_4[:200], median_noncp[:200], color = color_non_transition, lw = 2, label = labels[-1])
+axs[0].fill_between(t_4[:200], lower_noncp[:200], upper_noncp[:200], color=color_non_transition, alpha=0.2)
+axs[0].plot(t_4[200:], median_noncp[200:], color = color_non_transition, lw = 2, ls = ':')
+
+axs[-1].plot(t_4[:200], median_noncp[:200], color = color_non_transition, lw = 2, ls = ':')
+axs[-1].plot(t_4[200:], median_noncp[200:], color = color_non_transition, lw = 2, label = labels[-1])
+axs[-1].fill_between(t_4[200:], lower_noncp[200:], upper_noncp[200:], color=color_non_transition, alpha=0.2)
+
+
+
+## ALIGNMENT LEVER PRESSES: INITIAL TO PRE-TERMINAL
+for jj, tercile_category in enumerate(['t1', 't2', 't3']):
+    mask_cp_T1 = (exploded_df['tercile_cp_FInormalised'] == 'T1') & (exploded_df['lever_index_category'] == tercile_category) & (exploded_df['animal'] == animal)
+    mask_cp_T2 = (exploded_df['tercile_cp_FInormalised'] == 'T2') & (exploded_df['lever_index_category'] == tercile_category) & (exploded_df['animal'] == animal)
+    mask_cp_T3 = (exploded_df['tercile_cp_FInormalised'] == 'T3') & (exploded_df['lever_index_category'] == tercile_category) & (exploded_df['animal'] == animal)
+    masks = [mask_cp_T1,mask_cp_T2, mask_cp_T3]
+
+    for ii, mask in enumerate(masks):
+        color = tercile_colors[ii] if ii < 3 else color_non_transition
+        median, lower, upper = bootstrap_ci(all_snippets[mask], n_boot=n_bot, smooth_sigma=5)
+        axs[1+jj].plot(t_4[100:-100], median[100:-100], color = color, lw = 2, label = labels[ii])
+        axs[1+jj].fill_between(t_4[100:-100], lower[100:-100], upper[100:-100], color=color, alpha=0.2)
+
+
+axs[-1].legend(frameon = False, fontsize = 12)
+
+axs[0].set_xlabel('time since transition point (s)')
+axs[2].set_xlabel('time since press (s)')
+axs[-1].set_xlabel('time since last press (s)')
+
+[axs[ii].axvline(0,color = 'black', ls = '--', lw = 1) for ii in range(5)]
+
+axs[0].set_ylabel('DA (z ΔF/F)')
+
+figtitle = f'DA | conditioned on transition point | {animal}'
+
+plt.suptitle(figtitle)
+plt.savefig(rf'{PATH_SAVE_AGGREGATE_DA_FIGS}\{figtitle.replace("|","_")}.png')
+#plt.savefig(rf'{photometry_fig_path}\{figtitle.replace("|","_")}.pdf')
+
+#%%
+
+## same as above but split by experiment
+
+animal = animal2
+exp = 'c'
+
+n_bot = 500
+
+t_4 = np.linspace(-2,2,401)
+color_non_transition = '#1b6a9e'
+labels = ['early', 'intermediate', 'late', 'later-than-FI']
+
+fig, axs = plt.subplots(1,5, tight_layout = True, figsize = (12,4), width_ratios=[3,1,1,1,3], sharey = True)
+
+
+df = aggregated_jointdf.query(f'animal == "{animal}" and experiment == "{exp}"')# and date in {photometry_dates_dict[animal]}')
+_, snippets_cp_T1 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T1"', 'cp_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_T2 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T2"', 'cp_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_T3 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T3"', 'cp_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_afterFI = compute_snippets_across_days(df,f'bool_cp == False and count_lever < 3', 'last_lever_abs','DA_zscored_session', (-2,2))
+_, snippets_cp_afterFI = compute_snippets_across_days(df,f'bool_cp == False and count_lever == 1', 'last_lever_abs','DA_zscored_session', (-2,2))
+
+all_cp_snippets = [snippets_cp_T1, snippets_cp_T2, snippets_cp_T3]
+
+for ii, snippets in enumerate(all_cp_snippets):
+    color = tercile_colors[ii] if ii < 3 else color_non_transition
+
+    median, lower, upper = bootstrap_ci(snippets, n_boot=n_bot, smooth_sigma=5)
+    axs[0].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+    axs[0].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+
+
+mask_cp_T1 = (exploded_df['experiment'] == exp) & (exploded_df['tercile_cp_FInormalised'] == 'T1') & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+mask_cp_T2 = (exploded_df['experiment'] == exp) & (exploded_df['tercile_cp_FInormalised'] == 'T2') & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+mask_cp_T3 = (exploded_df['experiment'] == exp) & (exploded_df['tercile_cp_FInormalised'] == 'T3') & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+masks = [mask_cp_T1,mask_cp_T2, mask_cp_T3]
+
+for ii, mask in enumerate(masks):
+
+    color = tercile_colors[ii] if ii < 3 else color_non_transition
+    
+    median, lower, upper = bootstrap_ci(all_snippets[mask], n_boot=n_bot, smooth_sigma=5)
+    axs[-1].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+    axs[-1].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+
+
+
+## pre lever later-than-FI presses
+mask_nocp_trial = (exploded_df['count_lever'] < 3) & (exploded_df['bool_cp'] == False) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+median_noncp, lower_noncp, upper_noncp = bootstrap_ci(all_snippets[mask_nocp_trial], n_boot=50, smooth_sigma=5)
+
+axs[0].plot(t_4[:200], median_noncp[:200], color = color_non_transition, lw = 2, label = labels[-1])
+axs[0].fill_between(t_4[:200], lower_noncp[:200], upper_noncp[:200], color=color_non_transition, alpha=0.2)
+axs[0].plot(t_4[200:], median_noncp[200:], color = color_non_transition, lw = 2, ls = ':')
+
+axs[-1].plot(t_4[:200], median_noncp[:200], color = color_non_transition, lw = 2, ls = ':')
+axs[-1].plot(t_4[200:], median_noncp[200:], color = color_non_transition, lw = 2, label = labels[-1])
+axs[-1].fill_between(t_4[200:], lower_noncp[200:], upper_noncp[200:], color=color_non_transition, alpha=0.2)
+
+
+
+## ALIGNMENT LEVER PRESSES: INITIAL TO PRE-TERMINAL
+for jj, tercile_category in enumerate(['t1', 't2', 't3']):
+    mask_cp_T1 = (exploded_df['experiment'] == exp) & (exploded_df['tercile_cp_FInormalised'] == 'T1') & (exploded_df['lever_index_category'] == tercile_category) & (exploded_df['animal'] == animal)
+    mask_cp_T2 = (exploded_df['experiment'] == exp) & (exploded_df['tercile_cp_FInormalised'] == 'T2') & (exploded_df['lever_index_category'] == tercile_category) & (exploded_df['animal'] == animal)
+    mask_cp_T3 = (exploded_df['experiment'] == exp) & (exploded_df['tercile_cp_FInormalised'] == 'T3') & (exploded_df['lever_index_category'] == tercile_category) & (exploded_df['animal'] == animal)
+    masks = [mask_cp_T1,mask_cp_T2, mask_cp_T3]
+
+    for ii, mask in enumerate(masks):
+        color = tercile_colors[ii] if ii < 3 else color_non_transition
+        median, lower, upper = bootstrap_ci(all_snippets[mask], n_boot=n_bot, smooth_sigma=5)
+        axs[1+jj].plot(t_4[100:-100], median[100:-100], color = color, lw = 2, label = labels[ii])
+        axs[1+jj].fill_between(t_4[100:-100], lower[100:-100], upper[100:-100], color=color, alpha=0.2)
+
+
+axs[-1].legend(frameon = False, fontsize = 12)
+
+axs[0].set_xlabel('time since transition point (s)')
+axs[2].set_xlabel('time since press (s)')
+axs[-1].set_xlabel('time since last press (s)')
+
+[axs[ii].axvline(0,color = 'black', ls = '--', lw = 1) for ii in range(5)]
+
+axs[0].set_ylabel('DA (z ΔF/F)')
+
+figtitle = f'DA | conditioned on transition point | {animal} | experiment {exp}'
+
+plt.suptitle(figtitle)
+plt.savefig(rf'{PATH_SAVE_AGGREGATE_DA_FIGS}\{figtitle.replace("|","_")}.png')
+#plt.savefig(rf'{photometry_fig_path}\{figtitle.replace("|","_")}.pdf')
+
+
+
+#%%
+
+"""
+....###....##.......##...........######...#######..##....##.########...######.
+...##.##...##.......##..........##....##.##.....##.###...##.##.....##.##....##
+..##...##..##.......##..........##.......##.....##.####..##.##.....##.##......
+.##.....##.##.......##..........##.......##.....##.##.##.##.##.....##..######.
+.#########.##.......##..........##.......##.....##.##..####.##.....##.......##
+.##.....##.##.......##..........##....##.##.....##.##...###.##.....##.##....##
+.##.....##.########.########.....######...#######..##....##.########...######.
+
+not from the thesis nb -- split by conditions: block types within experiment types
+
+"""
+animal = animal2
+
+alignment = 'cp_abs'
+alignment_label = 'transition point'
+#alignment = 'last_lever_abs'
+#alignment_label = 'last press'
+
+fig, axs = plt.subplots(3,3, tight_layout = True, figsize = (12,12), sharex = True, sharey = True)
+
+for jj, exp in enumerate(['a','b','c']):
+    if exp == 'c':
+        variable = 'n_protocols'
+        order = rwd_order
+    else:
+        variable = 'FI'
+        order = FI_order
+
+    for kk, var in enumerate(order):
+        df = aggregated_jointdf.query(f'animal == "{animal}" and experiment == "{exp}" and {variable} == {var}')
+        _, snippets_cp_T1 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T1"', alignment,'DA_zscored_session', (-2,2))
+        _, snippets_cp_T2 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T2"', alignment,'DA_zscored_session', (-2,2))
+        _, snippets_cp_T3 = compute_snippets_across_days(df,f'bool_cp and tercile_cp_FInormalised == "T3"', alignment,'DA_zscored_session', (-2,2))
+        #_, snippets_cp_afterFI = compute_snippets_across_days(df,f'bool_cp == False and count_lever < 3', 'last_lever_abs','DA_zscored_session', (-2,2))
+        #_, snippets_cp_afterFI = compute_snippets_across_days(df,f'bool_cp == False and count_lever == 1', 'last_lever_abs','DA_zscored_session', (-2,2))
+
+        all_cp_snippets = [snippets_cp_T1, snippets_cp_T2, snippets_cp_T3]
+
+        for ii, snippets in enumerate(all_cp_snippets):
+            color = tercile_colors[ii] if ii < 3 else color_non_transition
+
+            median, lower, upper = bootstrap_ci(snippets, n_boot=n_bot, smooth_sigma=5)
+            axs[kk,jj].plot(t_4, median, color = color, lw = 2, label = labels[ii])
+            axs[kk,jj].fill_between(t_4, lower, upper, color=color, alpha=0.2)
+
+        axs[kk,jj].set_title(f'{variable} {var} - {exp}')
+        axs[kk,jj].axvline(0,color = 'black', ls = '--', lw = 1)
+
+        axs[kk,0].set_ylabel('DA (z ΔF/F)')
+
+    axs[-1,jj].set_xlabel(f'time since {alignment_label} (s)')
+
+
+figtitle = f'DA | conditioned on {alignment_label} | {animal} | per block type within experimental condition'
+
+plt.suptitle(figtitle)
+plt.savefig(rf'{PATH_SAVE_AGGREGATE_DA_FIGS}\{figtitle.replace("|","_")}.png')
+#%%
+
+animal = 'Ruthenium'
+exp = 'b'
+
+if exp == "c":
+    var = 'n_protocols'
+    order = rwd_order
+else:
+    var = 'FI'
+    order = FI_order
+
+
+fig, axs = plt.subplots(2,3, tight_layout = True, figsize = (12,6), height_ratios = [2,1])#, width_ratios=[1,2,4])
+
+for ii, cond in enumerate(order):
+
+    df = aggregated_jointdf.query(f'animal == "{animal}" and experiment == "{exp}" and {var} == {cond}')
+    
+    FI = 30 if exp == 'c' else cond
+    ## nanify False is not working, halp! -- something weird is going on with the nanify and delta_t; might need to restart stuff
+    t_long, snippets_long = compute_snippets_across_days(df,
+        'FI > 0', 'last_lever_abs', 'DA_zscored_session', (-2,FI*1.05))
+
+    cps = df.cp.values
+    sorted_cps = cps[np.argsort(cps)]
+    #next_rwd = aggregated_jointdf.query('bool_cp and animal == "Ruthenium" and experiment == "a" and FI == 30').apply(lambda x: x.cp_abs - x.trial_start, axis = 1).values
+
+    data = snippets_long[np.argsort(cps)][~np.isnan(sorted_cps)]
+
+    #plot_snippets(data, t_long, axs[0,ii], axs[1,ii])
+
+    vmin,vmax = np.nanquantile(data, [.01,.99])
+    axs[0,ii].imshow(zscore(data, axis = 1), aspect = 'auto', vmin = vmin, vmax = vmax,
+               extent = [t_long[0],t_long[-1],0,len(data)], origin = 'lower', cmap = 'bone')
+    axs[0,ii].plot(sorted_cps, np.arange(0,len(cps)), '|', color = 'purple')
+    axs[1,ii].plot(t_long, np.nanmean(data, axis = 0), lw = 1)
+    #axs[1,ii].plot(t_long, np.nanmean(zscore(data, axis = 1), axis = 0))
+
+    axs[0,ii].set_title(f'{var} {cond}')
+
+axs[0,0].set_ylabel('trials sorted by transition point')
+axs[1,0].set_ylabel('DA (z ΔF/F)')
+
+[axs[1,ii].set_xlabel('time since reward delivery (s)') for ii in range(3)]
+
+figtitle = f'{animal} | experiment {exp} | DA within trial sorted by transition point'
+
+plt.suptitle(figtitle)
+plt.savefig(rf'{PATH_SAVE_AGGREGATE_DA_FIGS}\{figtitle.replace("|","_")}.png')
+#%%
+
+np.argsort(df.cp.values)
+#%%
+cps
+#%%
+len(sorted_cps)
+#%%
+
+plt.figure(figsize = (8,10))
+
+
+for ii in range(105):
+    tt = np.argsort(cps)[ii]
+
+    #plt.plot(t_long, ii*5+ data[ii], 'k', lw = 1)
+    plt.plot(np.arange(0,len(df.DA_zscored_session.values[tt]))/100,5*ii+df.DA_zscored_session.values[tt], 'k', lw = .5)
+    plt.plot(cps[tt], 5*ii, 'o', color = 'orange')
+    for lvr in df.lever_rel.values[tt]:
+        plt.plot(lvr, 5*ii, '.', color = 'teal')
+
+plt.xlim(0,62)
+plt.ylim(0,(ii+1)*5)
+#plt.title(tt)
+
+#%%
+ii = 0
+tt = np.argsort(cps)[ii]
+
+plt.plot(data[ii,200:8000],
+         df.DA_zscored_session.values[tt][:6000])
+#%%
+plt.plot(np.arange(0,len(df.DA_zscored_session.values[tt]))/100,df.DA_zscored_session.values[tt], 'k', lw = 1)
+
+plt.plot(cps[tt], 5*ii, '.', color = 'purple')
+
+
+#%%
+
+"""
+..######..########..##.......####.########....########..##....##....########.##.....##.########..########.########..####.##.....##.########.##....##.########....###....##...........######...#######..##....##.########..####.########.####..#######..##....##..######.
+.##....##.##.....##.##........##.....##.......##.....##..##..##.....##........##...##..##.....##.##.......##.....##..##..###...###.##.......###...##....##......##.##...##..........##....##.##.....##.###...##.##.....##..##.....##.....##..##.....##.###...##.##....##
+.##.......##.....##.##........##.....##.......##.....##...####......##.........##.##...##.....##.##.......##.....##..##..####.####.##.......####..##....##.....##...##..##..........##.......##.....##.####..##.##.....##..##.....##.....##..##.....##.####..##.##......
+..######..########..##........##.....##.......########.....##.......######......###....########..######...########...##..##.###.##.######...##.##.##....##....##.....##.##..........##.......##.....##.##.##.##.##.....##..##.....##.....##..##.....##.##.##.##..######.
+.......##.##........##........##.....##.......##.....##....##.......##.........##.##...##........##.......##...##....##..##.....##.##.......##..####....##....#########.##..........##.......##.....##.##..####.##.....##..##.....##.....##..##.....##.##..####.......##
+.##....##.##........##........##.....##.......##.....##....##.......##........##...##..##........##.......##....##...##..##.....##.##.......##...###....##....##.....##.##..........##....##.##.....##.##...###.##.....##..##.....##.....##..##.....##.##...###.##....##
+..######..##........########.####....##.......########.....##.......########.##.....##.##........########.##.....##.####.##.....##.########.##....##....##....##.....##.########.....######...#######..##....##.########..####....##....####..#######..##....##..######.
+"""
+
+animal = animal2
+
+t_4 = np.linspace(-2,2,401)
+
+
+fig, axs = plt.subplots(2,3, tight_layout = True, figsize = (12,6), sharey = 'row')
+
+for ii,FI in enumerate(FI_order):
+    cond_color = color_FI_blocks[ii]
+
+    ## a
+    cond_mask = (exploded_df['experiment'] == 'a') & (exploded_df['FI'] == FI) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+    median, lower, upper = bootstrap_ci(all_snippets[cond_mask], n_boot=500, smooth_sigma=5)
+    axs[0,0].plot(t_4, median, color = cond_color, lw = 2)
+    axs[0,0].fill_between(t_4, lower, upper, color=cond_color, alpha=0.2)
+
+    cond_mask = (exploded_df['experiment'] == 'a') & (exploded_df['FI'] == FI) & (exploded_df['lever_index'] != -1) & (exploded_df['animal'] == animal)
+    median, lower, upper = bootstrap_ci(all_snippets[cond_mask], n_boot=500, smooth_sigma=5)
+    axs[1,0].plot(t_4, median, color = cond_color, lw = 2)
+    axs[1,0].fill_between(t_4, lower, upper, color=cond_color, alpha=0.2)
+
+    ## b
+    cond_mask = (exploded_df['experiment'] == 'b') & (exploded_df['FI'] == FI) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+    median, lower, upper = bootstrap_ci(all_snippets[cond_mask], n_boot=500, smooth_sigma=5)
+    axs[0,1].plot(t_4, median, color = cond_color, lw = 2)
+    axs[0,1].fill_between(t_4, lower, upper, color=cond_color, alpha=0.2)
+
+    cond_mask = (exploded_df['experiment'] == 'b') & (exploded_df['FI'] == FI) & (exploded_df['lever_index'] != -1) & (exploded_df['animal'] == animal)
+    median, lower, upper = bootstrap_ci(all_snippets[cond_mask], n_boot=500, smooth_sigma=5)
+    axs[1,1].plot(t_4, median, color = cond_color, lw = 2)
+    axs[1,1].fill_between(t_4, lower, upper, color=cond_color, alpha=0.2)
+
+for ii, rwd in enumerate(rwd_order): ## c
+    cond_color = color_rwd_blocks[ii]
+
+    cond_mask = (exploded_df['experiment'] == 'c') & (exploded_df['n_protocols'] == rwd) & (exploded_df['lever_index'] == -1) & (exploded_df['animal'] == animal)
+    median, lower, upper = bootstrap_ci(all_snippets[cond_mask], n_boot=500, smooth_sigma=5)
+    axs[0,2].plot(t_4, median, color = cond_color, lw = 2)
+    axs[0,2].fill_between(t_4, lower, upper, color=cond_color, alpha=0.2)
+
+    cond_mask = (exploded_df['experiment'] == 'c') & (exploded_df['n_protocols'] == rwd) & (exploded_df['lever_index'] != -1) & (exploded_df['animal'] == animal)
+    median, lower, upper = bootstrap_ci(all_snippets[cond_mask], n_boot=500, smooth_sigma=5)
+    axs[1,2].plot(t_4, median, color = cond_color, lw = 2)
+    axs[1,2].fill_between(t_4, lower, upper, color=cond_color, alpha=0.2)
+
+for kk in range(2):
+    axs[kk,0].set_ylabel('DA (z ΔF/F)')
+
+    for jj in range(3):    
+        axs[kk,jj].axvline(0,color = 'black', ls = '--', lw = 1)
+
+for jj in range(3):
+    axs[0,jj].set_xlabel(f'time since last lever press (s)')
+    axs[1,jj].set_xlabel(f'time since unrewarded lever press (s)')
+
+
+axs[0,0].set_title('varying FI, fixed rwd')
+axs[0,1].set_title('fixed rwd rate')
+axs[0,2].set_title('FI30, varying rwd')
+
+
+figtitle = f'DA | {animal} | around lever presses | split per experimental condition'
+
+plt.suptitle(figtitle)
+plt.savefig(rf'{PATH_SAVE_AGGREGATE_DA_FIGS}\{figtitle.replace("|","_")}.png')
+
+#%%
+
+#%%
+## this in principle should be the same as above; and it is!! I had a bug above in which I was filtering the exploded_df to account only for exp c
 """
 .##....##.########.##......##.....######..##....##.####.########..########..########.########..######.
 .###...##.##.......##..##..##....##....##.###...##..##..##.....##.##.....##.##..........##....##....##
@@ -759,62 +1548,6 @@ fig.suptitle(figtitle)
 plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
 
 #%%
-
-"""
-..######.....###....##.....##.########....########..########..######.
-.##....##...##.##...##.....##.##..........##.....##.##.......##....##
-.##........##...##..##.....##.##..........##.....##.##.......##......
-..######..##.....##.##.....##.######......##.....##.######....######.
-.......##.#########..##...##..##..........##.....##.##.............##
-.##....##.##.....##...##.##...##..........##.....##.##.......##....##
-..######..##.....##....###....########....########..##........######.
-"""
-
-#downharpdf.to_pickle(rf'{PATH_SAVE_DFS}\{animal}_{date}_downharpdf.pkl')
-#jointdf.to_pickle(rf'{PATH_SAVE_DFS}\{animal}_{date}_NEWjointdf.pkl')
-
-#%%
-
-calculate_snr(downharpdf.DA_poly_session)
-
-#%%
-
-
-
-#%%
-#eventalignment = 'rwd_lever_abs'
-#for colname in ['deltaF_poly_tdtomato', 'deltaF_poly_gfp']:#= 'DA_poly_session'
-#    snipps, time = signal2eventsnippets(downharpdf.timestamp_session,
-#                                        downharpdf[colname],
-#                                        np.hstack(jointdf[eventalignment].values),
-#                                        [-6,6], .01)
-#    plt.plot(time, np.nanmean(snipps, axis = 0))
-#
-#snipps, time = signal2eventsnippets(downharpdf.timestamp_session,
-#                                        downharpdf['DA_poly_session'],
-#                                        np.hstack(jointdf[eventalignment].values),
-#                                        [-6,6], .01)
-#plt.plot(time, 0.05+np.nanmean(snipps, axis = 0))
-
-#%%
-
-"""
-..#######..##.....##....###....##.......####.########.##....##....##.....##.########.########.########..####..######...######....
-.##.....##.##.....##...##.##...##........##.....##.....##..##.....###...###.##..........##....##.....##..##..##....##.##....##...
-.##.....##.##.....##..##...##..##........##.....##......####......####.####.##..........##....##.....##..##..##.......##.........
-.##.....##.##.....##.##.....##.##........##.....##.......##.......##.###.##.######......##....########...##..##........######....
-.##..##.##.##.....##.#########.##........##.....##.......##.......##.....##.##..........##....##...##....##..##.............##...
-.##....##..##.....##.##.....##.##........##.....##.......##.......##.....##.##..........##....##....##...##..##....##.##....##...
-..#####.##..#######..##.....##.########.####....##.......##.......##.....##.########....##....##.....##.####..######...######....
-
-- peak to noise ratio
-- photobleaching decay constant
-- motion sensitivity coefficient
-- total dynamic range
-
-"""
-
-
 
 
 

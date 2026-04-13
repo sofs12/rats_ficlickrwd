@@ -51,6 +51,8 @@ def main():
     if not os.path.exists(PATH_SAVE_FIGS):
         os.makedirs(PATH_SAVE_FIGS)
 
+
+    ## CAREFUL HERE -- change to 0
     SAVE_SYNC_PATH = glob.glob(fr'{EPHYS_PATH}\{animal}{date}*\*')[0]
     
     

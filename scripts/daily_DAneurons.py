@@ -57,7 +57,7 @@ setup()
 """
 
 animal = 'Ruthenium'
-date = '260310'
+date = '260227'
 
 ## now looking at my old code, 01_DAneurons.py
 DANEURONS_PATH_HOME = os.path.join(DROPBOX_TASK_PATH, 'analysis_DAneurons')

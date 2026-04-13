@@ -19,7 +19,11 @@ destination folder is "analysis_bhv\animal"
 
 ### pipeline to analyze photometry and produce daily photometry figs
 
-- run the script daily_photometry. currently under development; the ideia is that it can be run from terminal automatically with the same arguments as the daily_summary script. destination folder is "analysis_photometry\animal_date"
+- run the script daily_photometry, from terminal. Arguments are animal date bool_encoder. This later one should always be True, unless for some reason the encoder malfunctions (physically the magnet got out of place and the read is completely flat throughout the session) and in that case we should flag the bool_encoder argument as False. Destination folder is "analysis_photometry\animal_date". 
+
+```
+python scripts/daily_photometry animal date True
+```
 
 
 ### pipeline to produce sort and analyze the ephys data
@@ -72,7 +76,7 @@ python scripts/daily_DAneurons_01_produce_simpledf.py animal date
 ```
 
 - produce spike triggered dopamine averages. Run from terminal:
-````
+```
 python scripts/daily_DAneurons_02_STA.py animal date
 ```
 

@@ -64,7 +64,7 @@ def main():
     #plt.ylabel('trial duration (s)')
 
     exp = determine_experiment(df)
-    figtitle = f'{animal} {date} | experiment {exp}'
+    figtitle = f'{animal} {date} | experiment {exp} | click {bool(df.click.unique())}'
 
     if exp == 'c':
         color_palette = color_rwd_blocks
@@ -97,7 +97,7 @@ def main():
         axs[-1,0].set_xlim(0,70)
 
 
-    plt.savefig(rf'{PATH_BHV_ANALYSIS}/{animal}/{figtitle.replace('|','_')}.png', transparent = False)
+    plt.savefig(rf'{PATH_BHV_ANALYSIS}/{animal}/{figtitle.replace("|","_")}.png', transparent = False)
     plt.show()
 
     print(f'Daily bhv summary for {animal} on {date} saved to {PATH_BHV_ANALYSIS}')

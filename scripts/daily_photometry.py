@@ -1,4 +1,3 @@
-#%%
 import sys
 from pathlib import Path
 
@@ -20,7 +19,7 @@ import seaborn as sns
 from scipy.stats import zscore
 from scipy.signal import savgol_filter
 import statsmodels.api as sm
-
+import argparse
 
 from ratcode.config.paths import PATH_STORE_PICKLES, DROPBOX_TASK_PATH
 from ratcode.common.logging import determine_experiment
@@ -33,660 +32,609 @@ from ratcode.common.math import drop_nans_matrix
 from ratcode.common.colorcodes import FI_order, color_FI_blocks, rwd_order, color_rwd_blocks
 
 from ratcode.init import setup
-setup()
 
-def calculate_snr(signal):
-    mean_signal = np.mean(signal)
-    std_noise = np.std(signal)
-    snr = mean_signal / std_noise
-    return snr
-# %%
 
-animal = 'Ruthenium'
-date = '260312'
-## in case the encoder malfunctions (fully), flag this as False
-bool_encoder = True
+def main():
+    parser = argparse.ArgumentParser(description='Extract TTLs from neuropixel recording and correct geometry after ibl sorter')
+    parser.add_argument('animal', type=str, help='Name of the animal (e.g. Ruthenium)')
+    parser.add_argument('date', type=str, help='Date of the session format yymmdd (e.g. 260225)')
+    parser.add_argument('bool_encoder', type = str, help = 'In case the encoder malfunctions, flag this boolean as false')
+    args = parser.parse_args()
+    animal = args.animal
+    date = args.date
+    bool_encoder = args.bool_encoder
 
-# %%
+    setup()
 
-PHOTOMETRY_PATH = os.path.join(DROPBOX_TASK_PATH, 'photometry', animal)
+    #animal = 'Ruthenium'
+    #date = '260312'
+    ## in case the encoder malfunctions (fully), flag this as False
+    #bool_encoder = True
 
-PATH_SAVE_DFS = os.path.join(DROPBOX_TASK_PATH, 'analysis_photometry')
 
-PATH_SAVE_FIGS = os.path.join(DROPBOX_TASK_PATH, 'analysis_photometry', f'{animal}_{date}')
-if not os.path.exists(PATH_SAVE_FIGS):
-    os.makedirs(PATH_SAVE_FIGS)
+    PHOTOMETRY_PATH = os.path.join(DROPBOX_TASK_PATH, 'photometry', animal)
 
-#PATH_SAVE_ICA = os.path.join(DROPBOX_TASK_PATH, 'analysis_photometry', '00_all_sessions_ICA_snippets')
-#%%
+    PATH_SAVE_DFS = os.path.join(DROPBOX_TASK_PATH, 'analysis_photometry')
 
-bhv_pkl = glob.glob(rf"{DROPBOX_TASK_PATH}\analysis\{animal}_{date}_*.pkl")[0]
-bhvdf = pd.read_pickle(bhv_pkl)
+    PATH_SAVE_FIGS = os.path.join(DROPBOX_TASK_PATH, 'analysis_photometry', f'{animal}_{date}')
+    if not os.path.exists(PATH_SAVE_FIGS):
+        os.makedirs(PATH_SAVE_FIGS)
 
-bhvdf['cp'] = bhvdf.apply(lambda x: change_point.accepted_cp_Gallistel(x.trialno, 2, bhvdf, 'lever_rel', True)[0] if len(x.lever_rel)> 0 else np.nan, axis = 1)
-bhvdf['cp'] = bhvdf.apply(lambda x: change_point.validate_cp(x.cp, x.lever_rel) if len(x.lever_rel) > 0 else np.nan, axis = 1)
+    #PATH_SAVE_ICA = os.path.join(DROPBOX_TASK_PATH, 'analysis_photometry', '00_all_sessions_ICA_snippets')
 
-bhvdf['bool_cp'] = np.isnan(bhvdf.cp.values) == False
+    bhv_pkl = glob.glob(rf"{DROPBOX_TASK_PATH}\analysis\{animal}_{date}_*.pkl")[0]
+    bhvdf = pd.read_pickle(bhv_pkl)
 
-bhvdf.drop(bhvdf.query('trial_duration < 200').index, inplace = True)
-bhvdf.reset_index(drop = True, inplace = True)
-bhvdf['trialno'] = bhvdf.index + 1
+    bhvdf['cp'] = bhvdf.apply(lambda x: change_point.accepted_cp_Gallistel(x.trialno, 2, bhvdf, 'lever_rel', True)[0] if len(x.lever_rel)> 0 else np.nan, axis = 1)
+    bhvdf['cp'] = bhvdf.apply(lambda x: change_point.validate_cp(x.cp, x.lever_rel) if len(x.lever_rel) > 0 else np.nan, axis = 1)
 
+    bhvdf['bool_cp'] = np.isnan(bhvdf.cp.values) == False
 
-exp = determine_experiment(bhvdf)
-print(f'RUNNING DAILY PHOTOMETRY FOR\nanimal {animal}\ndate {date}\nexperiment {exp}')
-#%%
-for file in os.listdir(PHOTOMETRY_PATH):
+    bhvdf.drop(bhvdf.query('trial_duration < 200').index, inplace = True)
+    bhvdf.reset_index(drop = True, inplace = True)
+    bhvdf['trialno'] = bhvdf.index + 1
 
-    if convert_date_bonsai(date) in file:
-        if "in0" in file:
-            in0_path = os.path.join(PHOTOMETRY_PATH, file)
-        if "in1" in file:
-            in1_path = os.path.join(PHOTOMETRY_PATH, file)
-        if "in2" in file:
-            in2_path = os.path.join(PHOTOMETRY_PATH, file)
-        if "in3" in file: ## encoder
-            in3_path = os.path.join(PHOTOMETRY_PATH, file)
 
-in0 = pd.read_csv(in0_path, header = None)
-in0.columns = ['in0', 'timestamp0']
+    exp = determine_experiment(bhvdf)
+    print(f'RUNNING DAILY PHOTOMETRY FOR\nanimal {animal}\ndate {date}\nexperiment {exp}')
 
-in1 = pd.read_csv(in1_path, header = None)
-in1.columns = ['in1', 'timestamp1']
 
-in2 = pd.read_csv(in2_path, header = None)
-in2.columns = ['in2', 'timestamp2']
+    for file in os.listdir(PHOTOMETRY_PATH):
 
-## this is the encoder // rotary joint angular position
-in3 = pd.read_csv(in3_path, header = None)
-in3.columns = ['in3', 'timestamp3']
+        if convert_date_bonsai(date) in file:
+            if "in0" in file:
+                in0_path = os.path.join(PHOTOMETRY_PATH, file)
+            if "in1" in file:
+                in1_path = os.path.join(PHOTOMETRY_PATH, file)
+            if "in2" in file:
+                in2_path = os.path.join(PHOTOMETRY_PATH, file)
+            if "in3" in file: ## encoder
+                in3_path = os.path.join(PHOTOMETRY_PATH, file)
 
-harpdf = pd.concat([in0, in1, in2], axis = 1)
-harpdf['timestamp_comp'] = (harpdf.timestamp0 == harpdf.timestamp1)*(harpdf.timestamp0 == harpdf.timestamp2)
-harpdf.drop(harpdf.query('timestamp_comp == False').index, inplace=True)
-harpdf.rename(columns = {'timestamp1': 'timestamp'}, inplace=True)
-harpdf.drop(['timestamp0', 'timestamp_comp', 'timestamp2'], axis = 1, inplace=True)
+    in0 = pd.read_csv(in0_path, header = None)
+    in0.columns = ['in0', 'timestamp0']
 
-harpdf['tdtomato'] = harpdf.in0/2**16*20
-harpdf['gfp'] = harpdf.in1/2**16*20
-harpdf['gpio'] = harpdf.in2/2**16*20
-harpdf['encoder'] = in3.in3/2**16*20
-#%%
+    in1 = pd.read_csv(in1_path, header = None)
+    in1.columns = ['in1', 'timestamp1']
 
-if bool_encoder: 
-    harpdf['continuous_encoder'] = make_continuous(harpdf['encoder'].values, min_val=harpdf.encoder.min(), max_val=harpdf.encoder.max())
-else:
-    harpdf['continuous_encoder'] = 0
+    in2 = pd.read_csv(in2_path, header = None)
+    in2.columns = ['in2', 'timestamp2']
 
-window = 51 ## must be odd
-harpdf['encoder_vel'] = savgol_filter(harpdf['continuous_encoder'], window_length=window, polyorder=2, deriv=1)
-harpdf['encoder_vel_abs'] = np.abs(harpdf.encoder_vel)
+    ## this is the encoder // rotary joint angular position
+    in3 = pd.read_csv(in3_path, header = None)
+    in3.columns = ['in3', 'timestamp3']
 
+    print('harp files read')
 
-#%%
+    harpdf = pd.concat([in0, in1, in2], axis = 1)
+    harpdf['timestamp_comp'] = (harpdf.timestamp0 == harpdf.timestamp1)*(harpdf.timestamp0 == harpdf.timestamp2)
+    harpdf.drop(harpdf.query('timestamp_comp == False').index, inplace=True)
+    harpdf.rename(columns = {'timestamp1': 'timestamp'}, inplace=True)
+    harpdf.drop(['timestamp0', 'timestamp_comp', 'timestamp2'], axis = 1, inplace=True)
 
-harpdf['ttl_bool'] = harpdf.gpio.apply(lambda x: int(x>1))
-harpdf['diff_ttl'] = harpdf.ttl_bool.diff()
+    harpdf['tdtomato'] = harpdf.in0/2**16*20
+    harpdf['gfp'] = harpdf.in1/2**16*20
+    harpdf['gpio'] = harpdf.in2/2**16*20
+    harpdf['encoder'] = in3.in3/2**16*20
 
-harpdf['ttl_rising_edge'] = harpdf.ttl_bool*harpdf.diff_ttl > 0
-harpdf['timestamp_session'] = harpdf.timestamp - harpdf.timestamp[0]
 
-harpdf['trialno'] = harpdf.ttl_rising_edge.cumsum() - 1
-harpdf.drop(harpdf.query('trialno < 1').index, inplace=True)
-#in the behaviour I always drop the last trial
-harpdf.drop(harpdf.query(f'trialno == {harpdf.trialno.max()}').index, inplace=True)
+    if bool_encoder: 
+        harpdf['continuous_encoder'] = make_continuous(harpdf['encoder'].values, min_val=harpdf.encoder.min(), max_val=harpdf.encoder.max())
+    else:
+        harpdf['continuous_encoder'] = 0
 
-print(f'total # trials: {harpdf.trialno.values[-1]}')
-# %%
+    window = 51 ## must be odd
+    harpdf['encoder_vel'] = savgol_filter(harpdf['continuous_encoder'], window_length=window, polyorder=2, deriv=1)
+    harpdf['encoder_vel_abs'] = np.abs(harpdf.encoder_vel)
 
-start = 0
-end = -1
+    harpdf['ttl_bool'] = harpdf.gpio.apply(lambda x: int(x>1))
+    harpdf['diff_ttl'] = harpdf.ttl_bool.diff()
 
-gpio_offset = np.min([np.mean(harpdf.gfp.values),np.mean(harpdf.tdtomato.values)])
+    harpdf['ttl_rising_edge'] = harpdf.ttl_bool*harpdf.diff_ttl > 0
+    harpdf['timestamp_session'] = harpdf.timestamp - harpdf.timestamp[0]
 
-plt.figure()
+    harpdf['trialno'] = harpdf.ttl_rising_edge.cumsum() - 1
+    harpdf.drop(harpdf.query('trialno < 1').index, inplace=True)
+    #in the behaviour I always drop the last trial
+    harpdf.drop(harpdf.query(f'trialno == {harpdf.trialno.max()}').index, inplace=True)
 
-plt.plot(harpdf.timestamp_session[start:end], harpdf.gpio[start:end]/5+gpio_offset, color = 'grey', alpha = 0.5)
+    print(f'total # trials: {harpdf.trialno.values[-1]}')
 
-plt.plot(harpdf.timestamp_session[start:end], harpdf.tdtomato[start:end]-.2, color = 'red')
-plt.plot(harpdf.timestamp_session[start:end], harpdf.gfp[start:end], color = 'green')
+    start = 0
+    end = -1
 
-plt.plot(harpdf.timestamp_session[start:end], harpdf.encoder[start:end], color = 'blue', alpha = 0.5)
-plt.plot(harpdf.timestamp_session[start:end], zscore(harpdf.continuous_encoder[start:end]), color = 'pink')
+    gpio_offset = np.min([np.mean(harpdf.gfp.values),np.mean(harpdf.tdtomato.values)])
 
-plt.xlabel('t (s)')
-plt.ylabel('V')
+    #plt.figure()
+    #plt.plot(harpdf.timestamp_session[start:end], harpdf.gpio[start:end]/5+gpio_offset, color = 'grey', alpha = 0.5)
+    #plt.plot(harpdf.timestamp_session[start:end], harpdf.tdtomato[start:end]-.2, color = 'red')
+    #plt.plot(harpdf.timestamp_session[start:end], harpdf.gfp[start:end], color = 'green')
+    #plt.plot(harpdf.timestamp_session[start:end], harpdf.encoder[start:end], color = 'blue', alpha = 0.5)
+    #plt.plot(harpdf.timestamp_session[start:end], zscore(harpdf.continuous_encoder[start:end]), color = 'pink')
+    #plt.xlabel('t (s)')
+    #plt.ylabel('V')
+    #plt.title(f'{animal}_{date}')
+    #plt.ylim(0)
+    #plt.show()
 
-plt.title(f'{animal}_{date}')
-plt.ylim(0)
-plt.show()
 
+    """
+    .########...#######..##......##.##....##..######.....###....##.....##.########..##.......########
+    .##.....##.##.....##.##..##..##.###...##.##....##...##.##...###...###.##.....##.##.......##......
+    .##.....##.##.....##.##..##..##.####..##.##........##...##..####.####.##.....##.##.......##......
+    .##.....##.##.....##.##..##..##.##.##.##..######..##.....##.##.###.##.########..##.......######..
+    .##.....##.##.....##.##..##..##.##..####.......##.#########.##.....##.##........##.......##......
+    .##.....##.##.....##.##..##..##.##...###.##....##.##.....##.##.....##.##........##.......##......
+    .########...#######...###..###..##....##..######..##.....##.##.....##.##........########.########
+    """
 
-# %%
 
+    ####### might be worth revisiting this!
 
-"""
-.########...#######..##......##.##....##..######.....###....##.....##.########..##.......########
-.##.....##.##.....##.##..##..##.###...##.##....##...##.##...###...###.##.....##.##.......##......
-.##.....##.##.....##.##..##..##.####..##.##........##...##..####.####.##.....##.##.......##......
-.##.....##.##.....##.##..##..##.##.##.##..######..##.....##.##.###.##.########..##.......######..
-.##.....##.##.....##.##..##..##.##..####.......##.#########.##.....##.##........##.......##......
-.##.....##.##.....##.##..##..##.##...###.##....##.##.....##.##.....##.##........##.......##......
-.########...#######...###..###..##....##..######..##.....##.##.....##.##........########.########
-"""
+    downsample_factor = 10
+    fs = 1000 #sampling frequency
+    fs = fs/downsample_factor
+    nyquist = 0.5 * fs
 
 
-####### might be worth revisiting this!
+    for colname in ['tdtomato', 'gfp', 'encoder', 'continuous_encoder', 'encoder_vel']:
+        harpdf[f'ds_{colname}'] = harpdf[colname].rolling(2 * downsample_factor, center=True, min_periods=1).mean()
 
-downsample_factor = 10
-fs = 1000 #sampling frequency
-fs = fs/downsample_factor
-nyquist = 0.5 * fs
+    downharpdf = harpdf.iloc[::downsample_factor].reset_index(drop = True)
+    
+    #lowpass filter to remove the high freq noise
+    high_cutoff = 20
 
+    downharpdf['denoised_tdtomato'] = butter_filter(downharpdf.ds_tdtomato, high_cutoff, fs, 'low') 
+    downharpdf['denoised_gfp'] = butter_filter(downharpdf.ds_gfp, high_cutoff, fs, 'low')
 
-for colname in ['tdtomato', 'gfp', 'encoder', 'continuous_encoder', 'encoder_vel']:
-    harpdf[f'ds_{colname}'] = harpdf[colname].rolling(2 * downsample_factor, center=True, min_periods=1).mean()
+    ## jumps
+    fig, axs = plt.subplots(1,3, figsize = (16,4), tight_layout = True)
 
-downharpdf = harpdf.iloc[::downsample_factor].reset_index(drop = True)
-# %%
-
-#lowpass filter to remove the high freq noise
-high_cutoff = 20
-
-downharpdf['denoised_tdtomato'] = butter_filter(downharpdf.ds_tdtomato, high_cutoff, fs, 'low') 
-downharpdf['denoised_gfp'] = butter_filter(downharpdf.ds_gfp, high_cutoff, fs, 'low')
-#%%
-
-## jumps
-fig, axs = plt.subplots(1,3, figsize = (16,4), tight_layout = True)
-
-cutoffs = [.01, .0015, 0.001]
-
-for ii in range(3):
-    cutoff = cutoffs[ii]
-    axs[ii].plot(downharpdf.ds_tdtomato, color = 'red')
-    axs[ii].plot(butter_filter(downharpdf.ds_tdtomato, cutoff, fs, 'low'), color = 'black')
-    axs[ii].plot(downharpdf.ds_gfp, color = 'green')
-    axs[ii].plot(butter_filter(downharpdf.ds_gfp, cutoff, fs, 'low'), color = 'black')
-    axs[ii].set_title(cutoffs[ii])
-#%%
-jump_threshold_tdtomato = 10
-jump_threshold_gfp = 10
-
-fig, axs = plt.subplots(2)
-axs[1].plot(np.abs(zscore(np.diff(butter_filter(downharpdf.ds_gfp, 0.01, fs, 'low')))))
-axs[0].plot(np.abs(zscore(np.diff(butter_filter(downharpdf.ds_tdtomato, 0.01, fs, 'low')))))
-axs[1].plot(downharpdf.ds_gfp-3, color = 'green', alpha = 0.5)
-axs[0].plot(downharpdf.ds_tdtomato-4, color = 'red', alpha = 0.5)
-
-axs[0].axhline(jump_threshold_tdtomato)
-axs[1].axhline(jump_threshold_gfp)
-
-#%%
-
-plt.figure()
-plt.plot(downharpdf.ds_tdtomato)
-plt.plot(downharpdf.ds_gfp)
-plt.plot(downharpdf.ds_continuous_encoder)
-#%%
-
-np.where(np.abs(zscore(np.diff(butter_filter(downharpdf.ds_tdtomato, 0.01, fs, 'low'))))>4)
-#%%
-## for when I want to manually delete bad data
-#plt.plot(downharpdf.ds_tdtomato[:122000])
-#plt.plot(downharpdf.ds_gfp[:57500])
-#downharpdf.loc[57500:, 'ds_tdtomato'] = np.nan
-#downharpdf.loc[57500:, 'ds_gfp'] = np.nan
-#%%
-
-#if a channel saturates
-
-downharpdf.loc[downharpdf.query('ds_gfp > 9.99').ds_gfp.index, 'ds_gfp'] = np.nan
-
-#%%
-
-##USING POLY
-downharpdf['poly_tdtomato'] = segment_and_fit_function(downharpdf.timestamp_session.values, mask_jumps(downharpdf.ds_tdtomato, thres = jump_threshold_tdtomato), function = 'poly')
-#downharpdf['poly_tdtomato'] = segment_and_fit_function(downharpdf.timestamp_session.values, mask_jumps(downharpdf.ds_gfp, thres = jump_threshold_gfp), function = 'poly')
-downharpdf['poly_gfp'] = segment_and_fit_function(downharpdf.timestamp_session.values, mask_jumps(downharpdf.ds_gfp, thres = jump_threshold_gfp), function = 'poly')
-
-downharpdf['tdtomato_poly_flat'] = downharpdf.ds_tdtomato - downharpdf.poly_tdtomato
-downharpdf['gfp_poly_flat'] = downharpdf.ds_gfp - downharpdf.poly_gfp
-
-downharpdf['clean_poly_tdtomato'] = downharpdf.tdtomato_poly_flat + np.mean(downharpdf.ds_tdtomato)
-downharpdf['clean_poly_gfp'] = downharpdf.gfp_poly_flat + np.mean(downharpdf.ds_gfp)
-
-#define the baseline as the 10th percentile
-F0_tdtomato = np.nanquantile(downharpdf.clean_poly_tdtomato,.1)
-F0_gfp = np.nanquantile(downharpdf.clean_poly_gfp,.1)
-
-downharpdf['deltaF_poly_tdtomato'] = (downharpdf.clean_poly_tdtomato - F0_tdtomato)/F0_tdtomato
-downharpdf['deltaF_poly_gfp'] = (downharpdf.clean_poly_gfp - F0_gfp)/F0_gfp
-
-downharpdf['predicted_poly_gfp_session'] = get_prediction(downharpdf.deltaF_poly_tdtomato, downharpdf.deltaF_poly_gfp)
-downharpdf['DA_poly_session'] = downharpdf.deltaF_poly_gfp - downharpdf.predicted_poly_gfp_session
-
-downharpdf['tdtomato_poly_flat'] = downharpdf.ds_tdtomato - downharpdf.poly_tdtomato
-downharpdf['gfp_poly_flat'] = downharpdf.ds_gfp - downharpdf.poly_gfp
-
-#%%
-
-
-fig, axs = plt.subplots(3, figsize = (12,6), tight_layout = True, sharex = True)
-
-time_session_mins = downharpdf.timestamp_session.values
-time_session_mins = (time_session_mins - time_session_mins[0])/60
-
-axs[0].plot(time_session_mins, downharpdf.ds_tdtomato, color = 'red')
-axs[0].plot(time_session_mins, downharpdf.poly_tdtomato, color = 'white')
-axs[0].plot(time_session_mins, downharpdf.ds_gfp, color = 'green')
-axs[0].plot(time_session_mins, downharpdf.poly_gfp, color = 'white')
-
-axs[1].plot(time_session_mins, downharpdf.tdtomato_poly_flat, color = 'red')
-axs[1].plot(time_session_mins, downharpdf.gfp_poly_flat, color = 'green')
-
-axs[2].plot(time_session_mins, downharpdf.DA_poly_session, color = 'purple')
-
-axs[0].set_ylabel('ds data and fits')
-axs[1].set_ylabel('flattened = ds - fit')
-axs[2].set_ylabel('DA')
-
-axs[-1].set_xlabel('time in session (min)')
-
-figtitle = f'{animal} {date} | exp {exp} | DA from robust regression | signals flattened via 3rd order polynomial'
-fig.suptitle(figtitle)
-
-plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|', '_')}.png', dpi = 300)
-#%%
-fig, axs = plt.subplots(2,1, tight_layout = True, figsize = (4,8), sharex = True)
-
-axs[0].plot(downharpdf.deltaF_poly_tdtomato.values, downharpdf.deltaF_poly_gfp.values, '.', color = 'grey', alpha = 0.2)
-axs[0].plot(downharpdf.deltaF_poly_tdtomato.values, get_prediction(downharpdf.deltaF_poly_tdtomato.values, downharpdf.deltaF_poly_gfp.values), color = 'black', lw = 1)
-axs[1].plot(downharpdf.deltaF_poly_tdtomato.values, downharpdf.DA_poly_session, '.', color = 'grey', alpha = 0.2)
-
-axs[0].set_ylabel('dLight (dF/F)')
-axs[1].set_ylabel('DA from regression')
-axs[1].set_xlabel('tdTomato (dF/F)')
-
-figtitle = f'{animal} {date} | exp {exp} | scatter'
-
-fig.suptitle(figtitle)
-
-plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
-
-#%%
-"""
-.########..########..######...########..########..######...######..####..#######..##....##....########..########..######...#######..########..########.########.
-.##.....##.##.......##....##..##.....##.##.......##....##.##....##..##..##.....##.###...##....##.....##.##.......##....##.##.....##.##.....##.##.......##.....##
-.##.....##.##.......##........##.....##.##.......##.......##........##..##.....##.####..##....##.....##.##.......##.......##.....##.##.....##.##.......##.....##
-.########..######...##...####.########..######....######...######...##..##.....##.##.##.##....##.....##.######...##.......##.....##.##.....##.######...########.
-.##...##...##.......##....##..##...##...##.............##.......##..##..##.....##.##..####....##.....##.##.......##.......##.....##.##.....##.##.......##...##..
-.##....##..##.......##....##..##....##..##.......##....##.##....##..##..##.....##.##...###....##.....##.##.......##....##.##.....##.##.....##.##.......##....##.
-.##.....##.########..######...##.....##.########..######...######..####..#######..##....##....########..########..######...#######..########..########.##.....##
-"""
-
-if bool_encoder == False:
-    downharpdf['DA_encoder_session'] = downharpdf['DA_poly_session']
-
-else:
-    tdtomato = np.hstack(downharpdf.tdtomato_poly_flat.values)
-    gfp = np.hstack(downharpdf.gfp_poly_flat.values)
-    continuous_encoder = np.hstack(downharpdf.ds_continuous_encoder.values)
-    encoder_vel = np.hstack(downharpdf.ds_encoder_vel.values)
-
-    data_stack = np.column_stack([tdtomato, continuous_encoder, encoder_vel])
-    is_valid = ~np.isnan(data_stack).any(axis=1)
-
-    X_raw = np.column_stack([
-        zscore(tdtomato[is_valid]), 
-        zscore(continuous_encoder[is_valid]), 
-        zscore(encoder_vel[is_valid])
-    ])
-    y_valid = gfp[is_valid]
-
-
-    X_with_const = sm.add_constant(X_raw)
-
-    mod = sm.QuantReg(y_valid, X_with_const)
-    res = mod.fit(q = 0.5)
-
-    residuals = np.full(len(gfp), np.nan)
-    residuals[is_valid] = res.resid
-
-    print(res.summary())
-
-    downharpdf['DA_encoder_session'] = residuals
-
-
-#%%
-plt.figure()
-plt.plot(zscore(downharpdf.DA_poly_session[is_valid]), lw = 1)
-plt.plot(zscore(downharpdf.DA_encoder_session[is_valid]), alpha = 0.5, lw = 1)
-plt.show()
-
-#%%
-## save downharpdf
-
-downharpdf.to_pickle(rf'{PATH_SAVE_DFS}\{animal}_{date}_downharpdf.pkl')
-
-
-#%%
-"""
-.......##..#######..####.##....##.########.########..########
-.......##.##.....##..##..###...##....##....##.....##.##......
-.......##.##.....##..##..####..##....##....##.....##.##......
-.......##.##.....##..##..##.##.##....##....##.....##.######..
-.##....##.##.....##..##..##..####....##....##.....##.##......
-.##....##.##.....##..##..##...###....##....##.....##.##......
-..######...#######..####.##....##....##....########..##......
-"""
-## again, almost full repetition from photometry_interactive
-## new part is the ICA column
-
-
-#PATH_SAVE_DFS = os.path.join(DROPBOX_TASK_PATH, 'analysis_photometry')
-#downharpdf = pd.read_pickle(rf'{PATH_SAVE_DFS}\{animal}_{date}_downharpdf.pkl')
-
-
-jointdf = group_and_listify(downharpdf, 'trialno', ['timestamp_session', 'tdtomato_poly_flat', 'gfp_poly_flat','DA_poly_session',
-                                                    'ds_encoder', 'ds_continuous_encoder', 'ds_encoder_vel',
-                                                    'DA_encoder_session'])
-
-jointdf['trial_start_harp'] = jointdf.timestamp_session.apply(lambda x: x[0])
-jointdf['trial_end_harp'] = jointdf.timestamp_session.apply(lambda x: x[-1])
-jointdf['trial_duration_harp'] = jointdf.trial_end_harp - jointdf.trial_start_harp
-
-jointdf.drop(jointdf.query('trial_duration_harp < 2').index, inplace = True)
-jointdf.reset_index(drop = True, inplace = True)
-jointdf['trialno'] = jointdf.index + 1
-
-#jointdf['trialno'] = jointdf.trialno + 11 
-plt.figure()
-plt.plot(jointdf.trialno, jointdf.trial_duration_harp, label = 'harp')
-plt.plot(bhvdf.trialno, bhvdf.trial_duration/1000, '--', label = 'bhv')
-plt.title('trial duration (i.e. identity) ok?')
-plt.legend()
-plt.show()
-
-
-jointdf['blockno'] = bhvdf.blockno
-jointdf['FI'] = bhvdf.FI/1000
-jointdf['FI'] = jointdf['FI'].astype(int)
-jointdf['click']  = bhvdf.click
-jointdf['n_protocols'] = bhvdf.n_protocols
-jointdf['bool_block'] = bhvdf.bool_block
-
-jointdf['trial_start_arduino'] = bhvdf.trial_start
-jointdf['trial_end_arduino'] = bhvdf.trial_end
-jointdf['trial_duration_arduino'] = bhvdf.trial_duration
-
-jointdf['lever_rel_arduino'] = bhvdf.lever_rel
-
-jointdf['lever_rel_harp'] = jointdf.apply(lambda x:
-                                convert_timestamp(x.lever_rel_arduino,
-                                [0, x.trial_duration_arduino],
-                                [0, x.trial_duration_harp]), axis = 1)
-
-
-jointdf['t_trial_harp'] = jointdf.apply(lambda x: np.hstack(x.timestamp_session) - x.trial_start_harp, axis = 1)
-
-jointdf['lever_abs_harp'] = jointdf.apply(lambda x: x.lever_rel_harp + x.trial_start_harp, axis = 1)
-
-jointdf['cp_abs'] = jointdf.trial_start_harp + bhvdf.cp
-jointdf['rwd_lever_abs'] = jointdf.lever_abs_harp.apply(lambda x: x[-1])
-jointdf['nonrwd_lever_abs'] = jointdf.lever_abs_harp.apply(lambda x: x[x!=x[-1]])
-
-
-## a bunch of new things added, on march 5th -- should rerun this for Ruthenium and Palladium
-jointdf['count_lever'] = jointdf.lever_rel_harp.apply(lambda x: len(x) if type(x) == np.ndarray else 0)
-jointdf = jointdf.query('count_lever > 0')
-
-jointdf['last_lever_harp'] = jointdf.apply(lambda x: x.lever_rel_harp[-1] if x.count_lever > 0 else np.nan, axis = 1)
-
-jointdf['pump_on_arduino'] = bhvdf.pump_rel.apply(lambda x: int(x[0]) if len(x)> 0 else np.nan)
-
-jointdf['pump_off_arduino'] = bhvdf.pump_rel + bhvdf.pump_duration
-jointdf['pump_off_arduino'] = jointdf.pump_off_arduino.apply(lambda x: int(x[0]) if len(x)> 0 else np.nan)
-
-jointdf['pump_on_harp'] = jointdf.apply(lambda x: convert_timestamp(x.pump_on_arduino,
-                                [0, x.trial_duration_arduino],
-                                [0, x.trial_duration_harp]), axis = 1)
-jointdf['pump_off_harp'] = jointdf.apply(lambda x: convert_timestamp(x.pump_off_arduino,
-                                [0, x.trial_duration_arduino],
-                                [0, x.trial_duration_harp]), axis = 1)
-
-
-# NEW - 14 AUGUST
-if jointdf.click.unique()[0] == 1:
-    jointdf['click_arduino'] = bhvdf.click_rel.apply(lambda x: int(x[0]) if len(x)> 0 else np.nan)
-    jointdf['click_harp'] = jointdf.apply(lambda x: convert_timestamp(x.click_arduino,
-                                [0, x.trial_duration_arduino],
-                                [0, x.trial_duration_harp]), axis = 1)
-
-jointdf['lever_abs_harp'] = jointdf.lever_rel_harp + jointdf.trial_start_harp
-jointdf['last_lever_abs_harp'] = jointdf.last_lever_harp + jointdf.trial_start_harp
-
-jointdf['prelast_lever_harp'] = jointdf.apply(lambda x: x.lever_rel_harp[-2] if x.count_lever > 1 else np.nan, axis = 1)
-jointdf['prelast_lever_abs_harp'] = jointdf.prelast_lever_harp + jointdf.trial_start_harp
-
-jointdf['diff_lever'] = jointdf.lever_rel_harp.apply(lambda x: np.diff(x))
-jointdf['lever_index'] = jointdf.count_lever.apply(lambda x: np.arange(x) - x)
-jointdf['lever_index_minuslast'] = jointdf.lever_index.apply(lambda x: x[:-1])                                
-
-jointdf['cp_arduino'] = bhvdf.cp*1000
-jointdf['cp_harp'] = jointdf.apply(lambda x: convert_timestamp(x.cp_arduino,
-                                [0, x.trial_duration_arduino],
-                                [0, x.trial_duration_harp]), axis = 1)
-
-
-#NEW - 23 JULY
-
-jointdf['poke_rel_arduino'] = bhvdf.poke_rel
-
-jointdf['poke_rel_harp'] = jointdf.apply(lambda x:
-                                convert_timestamp(x.poke_rel_arduino,
-                                [0, x.trial_duration_arduino],
-                                [0, x.trial_duration_harp]), axis = 1)
-
-jointdf['poke_abs_harp'] = jointdf.poke_rel_harp + jointdf.trial_start_harp
-
-#%%
-
-
-jointdf.to_pickle(rf'{PATH_SAVE_DFS}\{animal}_{date}_NEWjointdf.pkl')
-
-
-#%%
-"""
-.########.########..####....###....##..........########.####..######..
-....##....##.....##..##....##.##...##..........##........##..##....##.
-....##....##.....##..##...##...##..##..........##........##..##.......
-....##....########...##..##.....##.##..........######....##..##...####
-....##....##...##....##..#########.##..........##........##..##....##.
-....##....##....##...##..##.....##.##..........##........##..##....##.
-....##....##.....##.####.##.....##.########....##.......####..######..
-"""
-
-for tt in jointdf.trialno.values:
-    all_lever_presses = np.hstack(jointdf.query(f'trialno == {tt}').lever_rel_harp.values)
-    t_trial = np.hstack(jointdf.query(f'trialno == {tt}').t_trial_harp.values)
-
-    tomato = np.hstack(jointdf.query(f'trialno == {tt}').tdtomato_poly_flat)
-    continuous_encoder = np.hstack(jointdf.query(f'trialno == {tt}').ds_continuous_encoder)
-    encoder_vel = np.hstack(jointdf.query(f'trialno == {tt}').ds_encoder_vel)
-    gfp = np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat)
-
-
-
-    fig, axs = plt.subplots(3,1, figsize = (10,6), sharex = True, tight_layout = True)
-
-    for lvr in all_lever_presses:
-        for ii in range(3):
-            axs[ii].axvline(lvr, color = 'grey', lw = 0.5)
-
-    axs[0].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').tdtomato_poly_flat)), color = 'red', lw = 1, label = 'tdTomato')
-    axs[0].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat)), color = 'green', lw = 1, label = 'dLight')
-
-    axs_encoder = axs[0].twinx()
-    axs_encoder.plot(t_trial, continuous_encoder, color = 'blue', lw = 1, alpha = 0.5, label = 'enc_pos')
-    #axs[0].plot(t_trial, zscore(encoder_vel), color = 'orange', lw = 1, alpha = 0.5)
-
-    axs[0].set_ylabel('signals')
-
-    axs[1].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').DA_poly_session)), color = 'purple', lw = 1, label = 'robust session')
-    axs[1].set_ylabel('tdTomato')
-
-    da_trial = np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat) - get_prediction(np.hstack(jointdf.query(f'trialno == {tt}').tdtomato_poly_flat),np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat))
-    axs[1].plot(t_trial, zscore(da_trial), color = 'teal', lw = 1, label = 'robust trial')
-
-
-
-    axs[2].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').DA_encoder_session)), color = 'purple', lw = 1, label = 'encoder session')
-
-    ## trial regression with encoder
-    X = np.column_stack([zscore(tomato), zscore(continuous_encoder), zscore(encoder_vel)])
-    X_with_const = sm.add_constant(X)
-    mod = sm.QuantReg(gfp, X_with_const)
-    res = mod.fit(q = 0.5)
-
-    axs[2].plot(t_trial, zscore(res.resid), color = 'teal', lw = 1, label = 'encoder trial')
-    axs[2].set_ylabel('tdTomato, enc_pos, _vel', fontsize = 12)
+    cutoffs = [.01, .0015, 0.001]
 
     for ii in range(3):
-        axs[ii].legend(frameon = False)
+        cutoff = cutoffs[ii]
+        axs[ii].plot(downharpdf.ds_tdtomato, color = 'red')
+        axs[ii].plot(butter_filter(downharpdf.ds_tdtomato, cutoff, fs, 'low'), color = 'black')
+        axs[ii].plot(downharpdf.ds_gfp, color = 'green')
+        axs[ii].plot(butter_filter(downharpdf.ds_gfp, cutoff, fs, 'low'), color = 'black')
+        axs[ii].set_title(cutoffs[ii])
 
-    axs[-1].set_xlabel('time since reward (s)')
+    jump_threshold_tdtomato = 10
+    jump_threshold_gfp = 10
 
-    figtitle = f"{animal} {date} | trial {tt} | regressions with tdTomato and encoder data"
+    fig, axs = plt.subplots(2)
+    axs[1].plot(np.abs(zscore(np.diff(butter_filter(downharpdf.ds_gfp, 0.01, fs, 'low')))))
+    axs[0].plot(np.abs(zscore(np.diff(butter_filter(downharpdf.ds_tdtomato, 0.01, fs, 'low')))))
+    axs[1].plot(downharpdf.ds_gfp-3, color = 'green', alpha = 0.5)
+    axs[0].plot(downharpdf.ds_tdtomato-4, color = 'red', alpha = 0.5)
+
+    axs[0].axhline(jump_threshold_tdtomato)
+    axs[1].axhline(jump_threshold_gfp)
+
+
+    #plt.figure()
+    #plt.plot(downharpdf.ds_tdtomato)
+    #plt.plot(downharpdf.ds_gfp)
+    #plt.plot(downharpdf.ds_continuous_encoder)
+    
+
+    #np.where(np.abs(zscore(np.diff(butter_filter(downharpdf.ds_tdtomato, 0.01, fs, 'low'))))>4)
+    
+    ## for when I want to manually delete bad data
+    #plt.plot(downharpdf.ds_tdtomato[:122000])
+    #plt.plot(downharpdf.ds_gfp[:57500])
+    #downharpdf.loc[57500:, 'ds_tdtomato'] = np.nan
+    #downharpdf.loc[57500:, 'ds_gfp'] = np.nan
+
+
+    #if a channel saturates
+    downharpdf.loc[downharpdf.query('ds_gfp > 9.99').ds_gfp.index, 'ds_gfp'] = np.nan
+
+
+    ##USING POLY
+    downharpdf['poly_tdtomato'] = segment_and_fit_function(downharpdf.timestamp_session.values, mask_jumps(downharpdf.ds_tdtomato, thres = jump_threshold_tdtomato), function = 'poly')
+    #downharpdf['poly_tdtomato'] = segment_and_fit_function(downharpdf.timestamp_session.values, mask_jumps(downharpdf.ds_gfp, thres = jump_threshold_gfp), function = 'poly')
+    downharpdf['poly_gfp'] = segment_and_fit_function(downharpdf.timestamp_session.values, mask_jumps(downharpdf.ds_gfp, thres = jump_threshold_gfp), function = 'poly')
+
+    downharpdf['tdtomato_poly_flat'] = downharpdf.ds_tdtomato - downharpdf.poly_tdtomato
+    downharpdf['gfp_poly_flat'] = downharpdf.ds_gfp - downharpdf.poly_gfp
+
+    downharpdf['clean_poly_tdtomato'] = downharpdf.tdtomato_poly_flat + np.mean(downharpdf.ds_tdtomato)
+    downharpdf['clean_poly_gfp'] = downharpdf.gfp_poly_flat + np.mean(downharpdf.ds_gfp)
+
+    #define the baseline as the 10th percentile
+    F0_tdtomato = np.nanquantile(downharpdf.clean_poly_tdtomato,.1)
+    F0_gfp = np.nanquantile(downharpdf.clean_poly_gfp,.1)
+
+    downharpdf['deltaF_poly_tdtomato'] = (downharpdf.clean_poly_tdtomato - F0_tdtomato)/F0_tdtomato
+    downharpdf['deltaF_poly_gfp'] = (downharpdf.clean_poly_gfp - F0_gfp)/F0_gfp
+
+    downharpdf['predicted_poly_gfp_session'] = get_prediction(downharpdf.deltaF_poly_tdtomato, downharpdf.deltaF_poly_gfp)
+    downharpdf['DA_poly_session'] = downharpdf.deltaF_poly_gfp - downharpdf.predicted_poly_gfp_session
+
+    downharpdf['tdtomato_poly_flat'] = downharpdf.ds_tdtomato - downharpdf.poly_tdtomato
+    downharpdf['gfp_poly_flat'] = downharpdf.ds_gfp - downharpdf.poly_gfp
+
+
+    fig, axs = plt.subplots(3, figsize = (12,6), tight_layout = True, sharex = True)
+
+    time_session_mins = downharpdf.timestamp_session.values
+    time_session_mins = (time_session_mins - time_session_mins[0])/60
+
+    axs[0].plot(time_session_mins, downharpdf.ds_tdtomato, color = 'red')
+    axs[0].plot(time_session_mins, downharpdf.poly_tdtomato, color = 'white')
+    axs[0].plot(time_session_mins, downharpdf.ds_gfp, color = 'green')
+    axs[0].plot(time_session_mins, downharpdf.poly_gfp, color = 'white')
+
+    axs[1].plot(time_session_mins, downharpdf.tdtomato_poly_flat, color = 'red')
+    axs[1].plot(time_session_mins, downharpdf.gfp_poly_flat, color = 'green')
+
+    axs[2].plot(time_session_mins, downharpdf.DA_poly_session, color = 'purple')
+
+    axs[0].set_ylabel('ds data and fits')
+    axs[1].set_ylabel('flattened = ds - fit')
+    axs[2].set_ylabel('DA')
+
+    axs[-1].set_xlabel('time in session (min)')
+
+    figtitle = f'{animal} {date} | exp {exp} | DA from robust regression | signals flattened via 3rd order polynomial'
+    fig.suptitle(figtitle)
+
+    plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|', '_')}.png', dpi = 300)
+
+
+
+    fig, axs = plt.subplots(2,1, tight_layout = True, figsize = (4,8), sharex = True)
+
+    axs[0].plot(downharpdf.deltaF_poly_tdtomato.values, downharpdf.deltaF_poly_gfp.values, '.', color = 'grey', alpha = 0.2)
+    axs[0].plot(downharpdf.deltaF_poly_tdtomato.values, get_prediction(downharpdf.deltaF_poly_tdtomato.values, downharpdf.deltaF_poly_gfp.values), color = 'black', lw = 1)
+    axs[1].plot(downharpdf.deltaF_poly_tdtomato.values, downharpdf.DA_poly_session, '.', color = 'grey', alpha = 0.2)
+
+    axs[0].set_ylabel('dLight (dF/F)')
+    axs[1].set_ylabel('DA from regression')
+    axs[1].set_xlabel('tdTomato (dF/F)')
+
+    figtitle = f'{animal} {date} | exp {exp} | scatter'
+
     fig.suptitle(figtitle)
 
     plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
-    plt.close()
+
+
+    """
+    .########..########..######...########..########..######...######..####..#######..##....##....########..########..######...#######..########..########.########.
+    .##.....##.##.......##....##..##.....##.##.......##....##.##....##..##..##.....##.###...##....##.....##.##.......##....##.##.....##.##.....##.##.......##.....##
+    .##.....##.##.......##........##.....##.##.......##.......##........##..##.....##.####..##....##.....##.##.......##.......##.....##.##.....##.##.......##.....##
+    .########..######...##...####.########..######....######...######...##..##.....##.##.##.##....##.....##.######...##.......##.....##.##.....##.######...########.
+    .##...##...##.......##....##..##...##...##.............##.......##..##..##.....##.##..####....##.....##.##.......##.......##.....##.##.....##.##.......##...##..
+    .##....##..##.......##....##..##....##..##.......##....##.##....##..##..##.....##.##...###....##.....##.##.......##....##.##.....##.##.....##.##.......##....##.
+    .##.....##.########..######...##.....##.########..######...######..####..#######..##....##....########..########..######...#######..########..########.##.....##
+    """
+
+    if bool_encoder == False:
+        downharpdf['DA_encoder_session'] = downharpdf['DA_poly_session']
+
+    else:
+        tdtomato = np.hstack(downharpdf.tdtomato_poly_flat.values)
+        gfp = np.hstack(downharpdf.gfp_poly_flat.values)
+        continuous_encoder = np.hstack(downharpdf.ds_continuous_encoder.values)
+        encoder_vel = np.hstack(downharpdf.ds_encoder_vel.values)
+
+        data_stack = np.column_stack([tdtomato, continuous_encoder, encoder_vel])
+        is_valid = ~np.isnan(data_stack).any(axis=1)
+
+        X_raw = np.column_stack([
+            zscore(tdtomato[is_valid]), 
+            zscore(continuous_encoder[is_valid]), 
+            zscore(encoder_vel[is_valid])
+        ])
+        y_valid = gfp[is_valid]
+
+
+        X_with_const = sm.add_constant(X_raw)
+
+        mod = sm.QuantReg(y_valid, X_with_const)
+        res = mod.fit(q = 0.5)
+
+        residuals = np.full(len(gfp), np.nan)
+        residuals[is_valid] = res.resid
+
+        print(res.summary())
+
+        downharpdf['DA_encoder_session'] = residuals
+
+    ## save downharpdf
+    downharpdf.to_pickle(rf'{PATH_SAVE_DFS}\{animal}_{date}_downharpdf.pkl')
+
+    """
+    .......##..#######..####.##....##.########.########..########
+    .......##.##.....##..##..###...##....##....##.....##.##......
+    .......##.##.....##..##..####..##....##....##.....##.##......
+    .......##.##.....##..##..##.##.##....##....##.....##.######..
+    .##....##.##.....##..##..##..####....##....##.....##.##......
+    .##....##.##.....##..##..##...###....##....##.....##.##......
+    ..######...#######..####.##....##....##....########..##......
+    """
+
+    jointdf = group_and_listify(downharpdf, 'trialno', ['timestamp_session', 'tdtomato_poly_flat', 'gfp_poly_flat','DA_poly_session',
+                                                        'ds_encoder', 'ds_continuous_encoder', 'ds_encoder_vel',
+                                                        'DA_encoder_session'])
+
+    jointdf['trial_start_harp'] = jointdf.timestamp_session.apply(lambda x: x[0])
+    jointdf['trial_end_harp'] = jointdf.timestamp_session.apply(lambda x: x[-1])
+    jointdf['trial_duration_harp'] = jointdf.trial_end_harp - jointdf.trial_start_harp
+
+    jointdf.drop(jointdf.query('trial_duration_harp < 2').index, inplace = True)
+    jointdf.reset_index(drop = True, inplace = True)
+    jointdf['trialno'] = jointdf.index + 1
+
+    #jointdf['trialno'] = jointdf.trialno + 11 
+    #plt.figure()
+    #plt.plot(jointdf.trialno, jointdf.trial_duration_harp, label = 'harp')
+    #plt.plot(bhvdf.trialno, bhvdf.trial_duration/1000, '--', label = 'bhv')
+    #plt.title('trial duration (i.e. identity) ok?')
+    #plt.legend()
+    #plt.show()
+
+
+    jointdf['blockno'] = bhvdf.blockno
+    jointdf['FI'] = bhvdf.FI/1000
+    jointdf['FI'] = jointdf['FI'].astype(int)
+    jointdf['click']  = bhvdf.click
+    jointdf['n_protocols'] = bhvdf.n_protocols
+    jointdf['bool_block'] = bhvdf.bool_block
+
+    jointdf['trial_start_arduino'] = bhvdf.trial_start
+    jointdf['trial_end_arduino'] = bhvdf.trial_end
+    jointdf['trial_duration_arduino'] = bhvdf.trial_duration
+
+    jointdf['lever_rel_arduino'] = bhvdf.lever_rel
+
+    jointdf['lever_rel_harp'] = jointdf.apply(lambda x:
+                                    convert_timestamp(x.lever_rel_arduino,
+                                    [0, x.trial_duration_arduino],
+                                    [0, x.trial_duration_harp]), axis = 1)
+
+
+    jointdf['t_trial_harp'] = jointdf.apply(lambda x: np.hstack(x.timestamp_session) - x.trial_start_harp, axis = 1)
+
+    jointdf['lever_abs_harp'] = jointdf.apply(lambda x: x.lever_rel_harp + x.trial_start_harp, axis = 1)
+
+    jointdf['cp_abs'] = jointdf.trial_start_harp + bhvdf.cp
+    jointdf['rwd_lever_abs'] = jointdf.lever_abs_harp.apply(lambda x: x[-1])
+    jointdf['nonrwd_lever_abs'] = jointdf.lever_abs_harp.apply(lambda x: x[x!=x[-1]])
+
+
+    ## a bunch of new things added, on march 5th -- should rerun this for Ruthenium and Palladium
+    jointdf['count_lever'] = jointdf.lever_rel_harp.apply(lambda x: len(x) if type(x) == np.ndarray else 0)
+    jointdf = jointdf.query('count_lever > 0')
+
+    jointdf['last_lever_harp'] = jointdf.apply(lambda x: x.lever_rel_harp[-1] if x.count_lever > 0 else np.nan, axis = 1)
+
+    jointdf['pump_on_arduino'] = bhvdf.pump_rel.apply(lambda x: int(x[0]) if len(x)> 0 else np.nan)
+
+    jointdf['pump_off_arduino'] = bhvdf.pump_rel + bhvdf.pump_duration
+    jointdf['pump_off_arduino'] = jointdf.pump_off_arduino.apply(lambda x: int(x[0]) if len(x)> 0 else np.nan)
+
+    jointdf['pump_on_harp'] = jointdf.apply(lambda x: convert_timestamp(x.pump_on_arduino,
+                                    [0, x.trial_duration_arduino],
+                                    [0, x.trial_duration_harp]), axis = 1)
+    jointdf['pump_off_harp'] = jointdf.apply(lambda x: convert_timestamp(x.pump_off_arduino,
+                                    [0, x.trial_duration_arduino],
+                                    [0, x.trial_duration_harp]), axis = 1)
+
+
+    # NEW - 14 AUGUST
+    if jointdf.click.unique()[0] == 1:
+        jointdf['click_arduino'] = bhvdf.click_rel.apply(lambda x: int(x[0]) if len(x)> 0 else np.nan)
+        jointdf['click_harp'] = jointdf.apply(lambda x: convert_timestamp(x.click_arduino,
+                                    [0, x.trial_duration_arduino],
+                                    [0, x.trial_duration_harp]), axis = 1)
+
+    jointdf['lever_abs_harp'] = jointdf.lever_rel_harp + jointdf.trial_start_harp
+    jointdf['last_lever_abs_harp'] = jointdf.last_lever_harp + jointdf.trial_start_harp
+
+    jointdf['prelast_lever_harp'] = jointdf.apply(lambda x: x.lever_rel_harp[-2] if x.count_lever > 1 else np.nan, axis = 1)
+    jointdf['prelast_lever_abs_harp'] = jointdf.prelast_lever_harp + jointdf.trial_start_harp
+
+    jointdf['diff_lever'] = jointdf.lever_rel_harp.apply(lambda x: np.diff(x))
+    jointdf['lever_index'] = jointdf.count_lever.apply(lambda x: np.arange(x) - x)
+    jointdf['lever_index_minuslast'] = jointdf.lever_index.apply(lambda x: x[:-1])                                
+
+    jointdf['cp_arduino'] = bhvdf.cp*1000
+    jointdf['cp_harp'] = jointdf.apply(lambda x: convert_timestamp(x.cp_arduino,
+                                    [0, x.trial_duration_arduino],
+                                    [0, x.trial_duration_harp]), axis = 1)
+
+
+    #NEW - 23 JULY
+
+    jointdf['poke_rel_arduino'] = bhvdf.poke_rel
+
+    jointdf['poke_rel_harp'] = jointdf.apply(lambda x:
+                                    convert_timestamp(x.poke_rel_arduino,
+                                    [0, x.trial_duration_arduino],
+                                    [0, x.trial_duration_harp]), axis = 1)
+
+    jointdf['poke_abs_harp'] = jointdf.poke_rel_harp + jointdf.trial_start_harp
+
+
+    jointdf.to_pickle(rf'{PATH_SAVE_DFS}\{animal}_{date}_NEWjointdf.pkl')
+
+
+    """
+    .########.########..####....###....##..........########.####..######..
+    ....##....##.....##..##....##.##...##..........##........##..##....##.
+    ....##....##.....##..##...##...##..##..........##........##..##.......
+    ....##....########...##..##.....##.##..........######....##..##...####
+    ....##....##...##....##..#########.##..........##........##..##....##.
+    ....##....##....##...##..##.....##.##..........##........##..##....##.
+    ....##....##.....##.####.##.....##.########....##.......####..######..
+    """
+
+    print('plotting trial figs...')
+
+    for tt in jointdf.trialno.values:
+        all_lever_presses = np.hstack(jointdf.query(f'trialno == {tt}').lever_rel_harp.values)
+        t_trial = np.hstack(jointdf.query(f'trialno == {tt}').t_trial_harp.values)
+
+        tomato = np.hstack(jointdf.query(f'trialno == {tt}').tdtomato_poly_flat)
+        continuous_encoder = np.hstack(jointdf.query(f'trialno == {tt}').ds_continuous_encoder)
+        encoder_vel = np.hstack(jointdf.query(f'trialno == {tt}').ds_encoder_vel)
+        gfp = np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat)
 
 
 
-#%%
+        fig, axs = plt.subplots(3,1, figsize = (10,6), sharex = True, tight_layout = True)
 
-"""
-.########.##.....##.########....########.####..######..
-....##....##.....##.##..........##........##..##....##.
-....##....##.....##.##..........##........##..##.......
-....##....#########.######......######....##..##...####
-....##....##.....##.##..........##........##..##....##.
-....##....##.....##.##..........##........##..##....##.
-....##....##.....##.########....##.......####..######..
-"""
+        for lvr in all_lever_presses:
+            for ii in range(3):
+                axs[ii].axvline(lvr, color = 'grey', lw = 0.5)
 
-fig, axs = plt.subplots(5,3, tight_layout = True, figsize = (12,12), sharex = True)
+        axs[0].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').tdtomato_poly_flat)), color = 'red', lw = 1, label = 'tdTomato')
+        axs[0].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat)), color = 'green', lw = 1, label = 'dLight')
 
-colors_colname = ['grey','red', 'green', 'purple']
+        axs_encoder = axs[0].twinx()
+        axs_encoder.plot(t_trial, continuous_encoder, color = 'blue', lw = 1, alpha = 0.5, label = 'enc_pos')
+        #axs[0].plot(t_trial, zscore(encoder_vel), color = 'orange', lw = 1, alpha = 0.5)
 
-for ii,eventalignment in enumerate(['cp_abs','nonrwd_lever_abs','rwd_lever_abs']):
-    for jj,colname in enumerate(['ds_continuous_encoder','deltaF_poly_tdtomato', 'deltaF_poly_gfp', 'DA_poly_session']):
+        axs[0].set_ylabel('signals')
 
-        snipps, time = signal2eventsnippets(downharpdf.timestamp_session,
-                                        downharpdf[colname],
-                                        np.hstack(jointdf[eventalignment].values),
-                                        [-4,4], .01)
-        
-        snipps = drop_nans_matrix(snipps)
+        axs[1].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').DA_poly_session)), color = 'purple', lw = 1, label = 'robust session')
+        axs[1].set_ylabel('tdTomato')
 
-        if jj == 0:
-            snipps = zscore(snipps, axis = 1)
-            #snipps - snipps[:, 0][:, np.newaxis]
-            
-        
-        vmin,vmax = np.nanquantile(snipps, [.05,.95])
-        axs[jj,ii].imshow(snipps, aspect = 'auto', vmin = vmin, vmax = vmax, cmap = 'bone', origin = 'lower',
-                          extent = [time[0],time[-1],0,len(snipps)])
-
-        snipps_mean = np.nanmean(snipps, axis = 0)
-        if jj != 0:
-            axs[-1,ii].plot(time, snipps_mean, color = colors_colname[jj])
-        else:
-            axs_encoder = axs[-1,ii].twinx()
-            axs_encoder.plot(time, snipps_mean, color = colors_colname[jj])
-
-        axs[jj,0].set_ylabel(colname, color = colors_colname[jj])
-
-    axs[-1,ii].set_xlabel(f't since {eventalignment} (s)')
-    axs[-1,ii].axvline(0, ls = '--', color = 'grey')
-
-figtitle = f'{animal} {date} | experiment {determine_experiment(jointdf)} | channel traces aligned to events'
-
-fig.suptitle(figtitle)
-
-plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
-
-#%%
-
-"""
-.########.##.....##.########.
-.##........##...##..##.....##
-.##.........##.##...##.....##
-.######......###....########.
-.##.........##.##...##.......
-.##........##...##..##.......
-.########.##.....##.##.......
-""" 
-
-exp = determine_experiment(jointdf)
-
-fig, axs = plt.subplots(1,3, tight_layout = True, sharey = True, figsize = (12,4))
-
-if exp == 'c': ## untested
-    variable = 'n_protocols'
-    colorcode = color_rwd_blocks
-    variable_list = rwd_order
-
-else:
-    variable = 'FI'
-    colorcode = color_FI_blocks
-    variable_list = FI_order
+        da_trial = np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat) - get_prediction(np.hstack(jointdf.query(f'trialno == {tt}').tdtomato_poly_flat),np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat))
+        axs[1].plot(t_trial, zscore(da_trial), color = 'teal', lw = 1, label = 'robust trial')
 
 
-for ii,eventalignment in enumerate(['cp_abs','nonrwd_lever_abs','rwd_lever_abs']):
 
-    for jj, variable_value in enumerate(variable_list):
-        snipps, time = signal2eventsnippets(downharpdf.timestamp_session,
-                                        downharpdf['DA_poly_session'],
-                                        np.hstack(jointdf.query(f'{variable} == {variable_value}')[eventalignment].values),
-                                        [-4,4], .01)
-    
-        axs[ii].plot(time, np.nanmean(snipps, axis = 0), color = colorcode[jj])
-    
-    axs[ii].set_xlabel(f't since {eventalignment} (s)')
-    axs[ii].axvline(0, ls = '--', color = 'grey')
+        axs[2].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').DA_encoder_session)), color = 'purple', lw = 1, label = 'encoder session')
 
-axs[0].set_ylabel('DA_poly_session')
+        ## trial regression with encoder
+        X = np.column_stack([zscore(tomato), zscore(continuous_encoder), zscore(encoder_vel)])
+        X_with_const = sm.add_constant(X)
+        mod = sm.QuantReg(gfp, X_with_const)
+        res = mod.fit(q = 0.5)
 
-figtitle = f'{animal} {date} | experiment {exp} | averages split by block condition'
+        axs[2].plot(t_trial, zscore(res.resid), color = 'teal', lw = 1, label = 'encoder trial')
+        axs[2].set_ylabel('tdTomato, enc_pos, _vel', fontsize = 12)
 
-fig.suptitle(figtitle)
+        for ii in range(3):
+            axs[ii].legend(frameon = False)
 
-plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
+        axs[-1].set_xlabel('time since reward (s)')
 
-#%%
+        figtitle = f"{animal} {date} | trial {tt} | regressions with tdTomato and encoder data"
+        fig.suptitle(figtitle)
 
-"""
-..######.....###....##.....##.########....########..########..######.
-.##....##...##.##...##.....##.##..........##.....##.##.......##....##
-.##........##...##..##.....##.##..........##.....##.##.......##......
-..######..##.....##.##.....##.######......##.....##.######....######.
-.......##.#########..##...##..##..........##.....##.##.............##
-.##....##.##.....##...##.##...##..........##.....##.##.......##....##
-..######..##.....##....###....########....########..##........######.
-"""
+        plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
+        plt.close()
 
-#downharpdf.to_pickle(rf'{PATH_SAVE_DFS}\{animal}_{date}_downharpdf.pkl')
-#jointdf.to_pickle(rf'{PATH_SAVE_DFS}\{animal}_{date}_NEWjointdf.pkl')
 
-#%%
 
-calculate_snr(downharpdf.DA_poly_session)
+    """
+    .########.##.....##.########....########.####..######..
+    ....##....##.....##.##..........##........##..##....##.
+    ....##....##.....##.##..........##........##..##.......
+    ....##....#########.######......######....##..##...####
+    ....##....##.....##.##..........##........##..##....##.
+    ....##....##.....##.##..........##........##..##....##.
+    ....##....##.....##.########....##.......####..######..
+    """
 
-#%%
+    print('plotting heatmaps aligned to events for the different channels')
 
+    fig, axs = plt.subplots(5,3, tight_layout = True, figsize = (12,12), sharex = True)
+
+    colors_colname = ['grey','red', 'green', 'purple']
+
+    for ii,eventalignment in enumerate(['cp_abs','nonrwd_lever_abs','rwd_lever_abs']):
+        for jj,colname in enumerate(['ds_continuous_encoder','deltaF_poly_tdtomato', 'deltaF_poly_gfp', 'DA_poly_session']):
+
+            snipps, time = signal2eventsnippets(downharpdf.timestamp_session,
+                                            downharpdf[colname],
+                                            np.hstack(jointdf[eventalignment].values),
+                                            [-4,4], .01)
+
+            snipps = drop_nans_matrix(snipps)
+
+            if jj == 0:
+                snipps = zscore(snipps, axis = 1)
+                #snipps - snipps[:, 0][:, np.newaxis]
+
+
+            vmin,vmax = np.nanquantile(snipps, [.05,.95])
+            axs[jj,ii].imshow(snipps, aspect = 'auto', vmin = vmin, vmax = vmax, cmap = 'bone', origin = 'lower',
+                              extent = [time[0],time[-1],0,len(snipps)])
+
+            snipps_mean = np.nanmean(snipps, axis = 0)
+            if jj != 0:
+                axs[-1,ii].plot(time, snipps_mean, color = colors_colname[jj])
+            else:
+                axs_encoder = axs[-1,ii].twinx()
+                axs_encoder.plot(time, snipps_mean, color = colors_colname[jj])
+
+            axs[jj,0].set_ylabel(colname, color = colors_colname[jj])
+
+        axs[-1,ii].set_xlabel(f't since {eventalignment} (s)')
+        axs[-1,ii].axvline(0, ls = '--', color = 'grey')
+
+    figtitle = f'{animal} {date} | experiment {determine_experiment(jointdf)} | channel traces aligned to events'
+
+    fig.suptitle(figtitle)
+
+    plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
+
+
+    """
+    .########.##.....##.########.
+    .##........##...##..##.....##
+    .##.........##.##...##.....##
+    .######......###....########.
+    .##.........##.##...##.......
+    .##........##...##..##.......
+    .########.##.....##.##.......
+    """ 
+
+    print('plotting DA transients split by block condition')
+
+    exp = determine_experiment(jointdf)
+
+    fig, axs = plt.subplots(1,3, tight_layout = True, sharey = True, figsize = (12,4))
+
+    if exp == 'c': ## untested
+        variable = 'n_protocols'
+        colorcode = color_rwd_blocks
+        variable_list = rwd_order
+
+    else:
+        variable = 'FI'
+        colorcode = color_FI_blocks
+        variable_list = FI_order
+
+
+    for ii,eventalignment in enumerate(['cp_abs','nonrwd_lever_abs','rwd_lever_abs']):
+
+        for jj, variable_value in enumerate(variable_list):
+            snipps, time = signal2eventsnippets(downharpdf.timestamp_session,
+                                            downharpdf['DA_poly_session'],
+                                            np.hstack(jointdf.query(f'{variable} == {variable_value}')[eventalignment].values),
+                                            [-4,4], .01)
+
+            axs[ii].plot(time, np.nanmean(snipps, axis = 0), color = colorcode[jj])
+
+        axs[ii].set_xlabel(f't since {eventalignment} (s)')
+        axs[ii].axvline(0, ls = '--', color = 'grey')
+
+    axs[0].set_ylabel('DA_poly_session')
+
+    figtitle = f'{animal} {date} | experiment {exp} | averages split by block condition'
+
+    fig.suptitle(figtitle)
+
+    plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
 
 
 #%%
@@ -705,6 +653,9 @@ calculate_snr(downharpdf.DA_poly_session)
 #plt.plot(time, 0.05+np.nanmean(snipps, axis = 0))
 
 #%%
+
+if __name__ == '__main__':
+    main()
 
 """
 ..#######..##.....##....###....##.......####.########.##....##....##.....##.########.########.########..####..######...######....

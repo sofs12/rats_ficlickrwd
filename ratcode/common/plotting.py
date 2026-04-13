@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib
+import plotly.graph_objects as go
 
 
 
@@ -1210,3 +1211,49 @@ def plot_XY(coordsdf, bodypart, color, ax = None):
         plt.plot(coordsdf[bodypart].x, coordsdf[bodypart].y, '.', color = color, ms = 2)
     else: 
         ax.plot(coordsdf[bodypart].x, coordsdf[bodypart].y, '.', color = color, ms = 2)
+
+from scipy.ndimage import gaussian_filter1d
+
+def add_3d_line_w_start_matplotlib(ax, projection, color, legend, smooth_sigma, linestyle = '-', bool_start_dot = True, project_axis = None, location_project_axis = None):
+    #sigma = 10  # in samples; adjust based on your sampling rate
+    projection = gaussian_filter1d(projection, sigma=smooth_sigma, axis=0, mode="nearest")
+    
+    x = projection[:,0]
+    y = projection[:,1]
+    z = projection[:,2]
+
+    ax.plot(x,y,z, color = color, label = legend, ls = linestyle)
+    
+    if bool_start_dot:
+        ax.plot(x[0],y[0],z[0], 'o', color = color, label = legend)
+
+    if 'x' in project_axis:
+        ax.plot(location_project_axis[project_axis == 'x']*np.ones_like(x), y, z, color=color, alpha=0.2, ls = linestyle)
+
+    if 'y' in project_axis:
+        ax.plot(x, location_project_axis[project_axis == 'y']*np.ones_like(y), z, color=color, alpha=0.2, ls = linestyle)
+
+    if 'z' in project_axis:
+        ax.plot(x,y,location_project_axis[project_axis == 'z']*np.ones_like(z), color = color, alpha = 0.2, ls = linestyle)
+
+def add_3d_line_w_start(fig, projection, color, legend):
+    # main trajectory line
+    fig.add_trace(go.Scatter3d(
+    x=projection[:, 0],
+    y=projection[:, 1],
+    z=projection[:, 2],
+    mode='lines',
+    line=dict(color = color, width=3),
+    name = legend
+    ))
+
+    #starting point
+    fig.add_trace(go.Scatter3d(
+    x=[projection[0, 0]],
+    y=[projection[0, 1]],
+    z=[projection[0, 2]],
+    mode='markers',
+    name='start',
+    marker=dict(color = color, size=5),
+        showlegend=False
+    ))

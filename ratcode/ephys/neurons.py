@@ -278,6 +278,8 @@ def determine_experiment(syncdf):
 
     return exp
 #%%
+
+## out of comission
 def determine_cell_type(cluster_id, sorted_data, syncdf, verbose = False):
 
     spike_times_cluster = sorted_data.spike_times[sorted_data.spike_clusters == cluster_id]/sorted_data.sampling_frequency
@@ -355,6 +357,55 @@ def determine_cell_type(cluster_id, sorted_data, syncdf, verbose = False):
     if verbose:
         print(f'cell identification: {cell_type}')
 
+    return cell_type
+
+
+def extract_features_cell_type(cluster_id, sorted_data, syncdf):
+
+    spike_times_cluster = sorted_data.spike_times[sorted_data.spike_clusters == cluster_id]/sorted_data.sampling_frequency
+
+    template_id = sorted_data.spike_templates[sorted_data.spike_clusters==cluster_id][0]
+    template_waveform = sorted_data.templates[template_id]
+
+    peak_amplitudes = np.max(template_waveform, axis = 0) - np.min(template_waveform, axis = 0)
+    min_lim, max_lim = np.quantile(peak_amplitudes[peak_amplitudes!=0],[.05,.95])#, binwidth=.001)
+
+    channels_to_consider_idx = np.where(peak_amplitudes > min_lim)[0]
+    channels_to_consider = sorted_data.channel_map[channels_to_consider_idx]
+
+    waveform_ms = np.arange(0,sorted_data.templates.shape[1]/sorted_data.sampling_frequency*1000,1/sorted_data.sampling_frequency*1000)
+    mean_waveform = np.nanmean(template_waveform[:,channels_to_consider_idx],axis = 1)
+
+    #trough-to-peak time
+    trough = np.argmin(mean_waveform)
+    peak = trough + np.argmax(mean_waveform[trough:])
+    trough_to_peak_ms = (peak - trough)/sorted_data.sampling_frequency*1000
+
+    #compute long interspike interval
+    ISI = np.diff(spike_times_cluster) # in seconds
+    total_recording_time = syncdf.npx_time.dropna().values[-1] - syncdf.npx_time.dropna().values[0] # in seconds
+    long_interspike_ratio = np.sum(ISI[ISI > 2])/total_recording_time*100
+
+    autocorrelogram_900ms = np.hstack(align_spikes_to_ttl(spike_times_cluster,spike_times_cluster,(0,.9)))
+    autocorrelogram_900ms = autocorrelogram_900ms[autocorrelogram_900ms!=0]
+    counts, bins = np.histogram(autocorrelogram_900ms, bins = np.arange(0,.9,.001))
+    #average FR (Hz) in bins 600 to 900 ms
+    av_FR_600_to_900 = np.sum(counts[600:900])/300
+    post_spike_suppression_ms = np.where(counts > av_FR_600_to_900)[0][0]
+
+    return trough_to_peak_ms, long_interspike_ratio, post_spike_suppression_ms, waveform_ms, mean_waveform
+
+def classify_cell_type_with_features(trough_to_peak_ms, long_interspike_ratio, post_spike_suppression_ms):
+    if trough_to_peak_ms <= 0.4:
+        if long_interspike_ratio > 10:
+            cell_type = 'unidentified interneuron'
+        else:
+            cell_type = 'FSI'
+    else:
+        if post_spike_suppression_ms > 40:
+            cell_type = 'TAN'
+        else:
+            cell_type = 'MSN'
     return cell_type
 #%%
 """
@@ -722,7 +773,9 @@ def produce_mega_neuron_fig(cluster_id, sorted_data, syncdf, neuronsdf, fig_save
 
     alignments, alignments_dict, key_dict, cmap_FI, cmap_nprots = compute_alignments(syncdf,bool_click, bool_cp_corrected)
 
-    fig, axs = plt.subplots(3,len(alignments), figsize=(4*len(alignments),12), tight_layout = True, height_ratios=[1,2,1])
+    #fig, axs = plt.subplots(3,len(alignments), figsize=(4*len(alignments),12), tight_layout = True, height_ratios=[1,2,1])
+    fig, axs = plt.subplots(3, len(alignments), figsize=(4*len(alignments), 12), tight_layout=True, height_ratios=[2, 5, 3])
+    gs_master = axs[0, 0].get_gridspec()
     for jj in range(len(alignments)):
         axs[1, jj].sharex(axs[0, jj])
 
@@ -789,90 +842,207 @@ def produce_mega_neuron_fig(cluster_id, sorted_data, syncdf, neuronsdf, fig_save
                 spine.set_visible(False)
 
     # cluster info -- annotation top left
+    #cluster_line = neuronsdf.query(f'cluster_id == {cluster_id}')
+    #cluster_info_text = f"""
+    #{cluster_line['cell_type'].values[0]}
+    #KSLabel: {cluster_line['KSLabel'].values[0]}
+    #n_spikes: {cluster_line['n_spikes'].values[0]}
+    #channel: {cluster_line['ch'].values[0]}
+    #depth: {cluster_line['depth'].values[0]}
+    #shank: {cluster_line['sh'].values[0]}
+    #"""
+    #if bool_click:
+    #    fig.text(0.5, 0.21, cluster_info_text, ha='center', va='center', fontsize=14)
+    #else:
+    #    fig.text(0.43, 0.21, cluster_info_text, ha='center', va='center', fontsize=14)
+
+
+    ##### new stuff
+
+    #lastrow_gs = axs[2, 0].get_gridspec()
+    #[fig.delaxes(axs[2, col]) for col in range(3)]
+#
+    #if bool_click:
+    #    axs[2, 0] = fig.add_subplot(lastrow_gs[2, :3])  # Expand across 3 columns
+    #else:
+    #    axs[2,0] = fig.add_subplot(lastrow_gs[2,:2]) # if there is no click, then there's one less few column
+    #cluster_amplitudes = sorted_data.amplitudes[sorted_data.spike_clusters == cluster_id]
+    #
+    #axs[2,0].plot(spike_times_cluster/60, cluster_amplitudes,'.', color = 'black', ms = 1)
+    #axs[2,0].set_xlabel('time in session (min)')
+    #axs[2,0].set_xlim(0,spike_times_cluster[-1]/60)
+    #axs[2,0].set_ylabel('amplitude (pseudo volts)')
+#
+    #ax_FR = axs[2,0].twinx()
+    #color = 'tab:blue'
+    #ax_FR.set_ylabel('mean firing rate (Hz)', color = color)
+    #sns.histplot(ax = ax_FR, x = spike_times_cluster/60, binwidth=1, weights = 1/60, element = 'step', alpha = 0.5)
+    #ax_FR.tick_params(axis = 'y', labelcolor=color)
+    #ax_FR.spines['right'].set_visible(True)
+    #ax_FR.spines['right'].set_color(color)
+#
+    #ax_FI = inset_axes(axs[2,0], width="100%", height="10%", loc="upper center", borderpad=0)
+    #ax_nprots = inset_axes(axs[2,0], width="100%", height="5%", loc="upper center", borderpad=0)
+    #FI_values = syncdf.loc[syncdf.npx_time.dropna().index, 'FI'].values #syncdf.FI.values
+    #nprots_values = syncdf.loc[syncdf.npx_time.dropna().index, 'n_protocols'].values #syncdf.n_protocols.values
+    #ax_FI.matshow(FI_values.reshape(1,len(FI_values)), aspect = 'auto', cmap = cmap_FI)
+    #ax_FI.set_axis_off()
+    #ax_nprots.matshow(nprots_values.reshape(1,len(nprots_values)), aspect = 'auto', cmap = cmap_nprots)
+    #ax_nprots.set_axis_off()
+#
+    #if bool_click:
+    #    fig.delaxes(axs[2,3])
+    ##else:
+    ##    fig.delaxes(axs[2,2])
+#
+    #ax_distamplitudes = inset_axes(axs[2,0], width="10%", height="100%", loc="center right", borderpad=-12)
+    #sns.histplot(ax = ax_distamplitudes, y = cluster_amplitudes, stat = 'density', element='step', color = 'grey')
+    ##ax_distamplitudes.set_axis_off()
+#
+    #ax_probe = inset_axes(axs[2,0], width="5%", height="120%", loc="center right", borderpad=-21)
+    #plot_probe_sofia(cluster_id, ax_probe, sorted_data, neuronsdf)
+    #ax_probe.set_axis_off()
+#
+    #plot_templates(cluster_id, axs[2,-3], sorted_data, neuronsdf)
+    #axs[2,-3].set_ylabel('template waveform (pseudo volts)')
+    #axs[2,-3].set_xlabel('time (ms)')
+    ##axs[2,4].set_axis_off()
+#
+    #ISI = np.diff(spike_times_cluster)*1000 # in ms
+    #if 1/np.mean(ISI)*1000 > 10:
+    #    binISI = .1
+    #else:
+    #    binISI = 1
+    #
+    #sns.histplot(ax = axs[2,-1], x = ISI, stat = 'count', element = 'step', binwidth=binISI, color = 'grey')
+    #axs[2,-1].set_xlim(-2,100)
+    #axs[2,-1].set_xlabel('time (ms)')
+    #axs[2,-1].set_title('ISI')
+#
+    #window_start = -.2
+    #window_end = .2
+    #sns.histplot(ax = axs[2,-2], x = neuronsdf.query(f'cluster_id == {cluster_id}').spikes_self_aligned.values[0]*1000, stat = 'frequency', element = 'step', binwidth = 1, color = 'grey')
+    #axs[2,-2].set_xlim(window_start*1000,window_end*1000)
+    #axs[2,-2].set_xlabel('time (ms)')
+    #axs[2,-2].set_ylabel('spikes / ms')
+    #axs[2,-2].set_title('autocorrelogram')
+#
+
+    # 4. BOTTOM ROW RE-LAYOUT (5 Columns with Percentage Widths)
+    # Clear original bottom row axes
+    for col in range(len(alignments)):
+        fig.delaxes(axs[2, col])
+
+    # Create a 100-unit virtual grid for the bottom row
+    gs_bottom = gs_master[2, :].subgridspec(1, 100, wspace=0)
+
+    # Define subplots based on your % requirements:
+    ax_main  = fig.add_subplot(gs_bottom[0, 0:48])   # 50%
+    ax_dist  = fig.add_subplot(gs_bottom[0, 50:55])  # 10%
+    ax_probe = fig.add_subplot(gs_bottom[0, 57:60])  # 5%
+    # waveform and text vertically stacked
+    gs_wave_text = gs_bottom[0, 62:75].subgridspec(2, 1, hspace=0.3, height_ratios=[2, 1])
+    ax_txt   = fig.add_subplot(gs_wave_text[0, 0])
+    ax_wave  = fig.add_subplot(gs_wave_text[1, 0])
+    #ax_wave  = fig.add_subplot(gs_bottom[0, 62:75])  # 10%
+    # 25% for Stacked ACG and ISI
+    gs_stack = gs_bottom[0, 80:100].subgridspec(2, 1, hspace=0.5)
+    ax_auto  = fig.add_subplot(gs_stack[0, 0])
+    ax_isi   = fig.add_subplot(gs_stack[1, 0])
+
+    # --- Plot 4a: Session Spikes & FR ---
+    cluster_amps = sorted_data.amplitudes[sorted_data.spike_clusters == cluster_id]
+    ax_main.plot(spike_times_cluster/60, cluster_amps, '.', color='black', ms=1)
+    ax_main.set_xlabel('time in session (min)')
+    ax_main.set_ylabel('amplitude (pseudo volts)')
+    ax_main.set_xlim(0, spike_times_cluster[-1]/60)
+
+    ax_FR_twin = ax_main.twinx()
+    color = 'tab:blue'
+    sns.histplot(ax=ax_FR_twin, x=spike_times_cluster/60, binwidth=1, weights=1/60, element='step', alpha=0.3, color=color)
+    #ax_FR_twin.set_ylabel('Hz', color='tab:blue')
+    ax_FR_twin.set_ylabel('mean firing rate (Hz)', color = color, rotation = 270, labelpad=20)
+    #sns.histplot(ax = ax_FR, x = spike_times_cluster/60, binwidth=1, weights = 1/60, element = 'step', alpha = 0.5)
+    ax_FR_twin.tick_params(axis = 'y', labelcolor=color)
+    ax_FR_twin.spines['right'].set_visible(True)
+    ax_FR_twin.spines['right'].set_color(color)
+
+    # Session condition bars
+    ax_FI_sess = inset_axes(ax_main, width="100%", height="10%", loc="upper center", borderpad=0)
+    ax_np_sess = inset_axes(ax_main, width="100%", height="5%", loc="upper center", borderpad=0)
+    FI_sess_vals = syncdf.loc[syncdf.npx_time.dropna().index, 'FI'].values
+    np_sess_vals = syncdf.loc[syncdf.npx_time.dropna().index, 'n_protocols'].values
+    ax_FI_sess.matshow(FI_sess_vals.reshape(1, -1), aspect='auto', cmap=cmap_FI)
+    ax_np_sess.matshow(np_sess_vals.reshape(1, -1), aspect='auto', cmap=cmap_nprots)
+    ax_FI_sess.set_axis_off(); ax_np_sess.set_axis_off()
+
+    # --- Plot 4b: Amplitude Distribution ---
+    sns.histplot(ax=ax_dist, y=cluster_amps, stat='density', element='step', color='grey')
+    #ax_dist.set_xlabel('density', fontsize=8)
+    ax_dist.get_yaxis().set_visible(False)
+    ax_dist.spines['left'].set_visible(False)
+
+    # --- Plot 4c: Probe Geometry ---
+    plot_probe_sofia(cluster_id, ax_probe, sorted_data, neuronsdf)
+    ax_probe.set_axis_off()
+
+    # --- Plot 4d: Waveform ---
+    #wvform = neuronsdf.query(f'cluster_id == {cluster_id}').mean_waveform.values[0]
+    ax_wave.plot(neuronsdf.query(f'cluster_id == {cluster_id}').waveform_ms.values[0],
+                neuronsdf.query(f'cluster_id == {cluster_id}').mean_waveform.values[0],
+                color = 'purple')
+    #ax_wave.set_axis_off()
+    ax_wave.get_yaxis().set_visible(False)
+    ax_wave.spines['left'].set_visible(False)
+    ax_wave.set_xlabel('t (ms)')
+
+    # --- Plot 4e: Autocorrelogram (Top Stack) ---
+    acg_raw_ms = neuronsdf.query(f'cluster_id == {cluster_id}').spikes_self_aligned.values[0] * 1000
+    n_spikes = len(spike_times_cluster)
+
+    duration_s = spike_times_cluster[-1] - spike_times_cluster[0]
+    mean_fr = n_spikes / duration_s  
+
+    ## steps for proper normalization (give counts y axis in spikes/s)    
+    bin_w_ms = 1.0
+    bin_w_s = bin_w_ms / 1000
+    # Normalization: Weight = 1 / (Number of Triggers * Bin Width in Seconds)
+    # This ensures the Y-axis is in Hz (Spikes/Second)
+    weights_acg = np.ones_like(acg_raw_ms) / (n_spikes * bin_w_s)
+    
+    sns.histplot(ax=ax_auto, x=acg_raw_ms, weights=weights_acg, 
+                 element='step', binwidth=bin_w_ms, color='grey')
+    #ax_auto.set_title('autocorrelelogram', fontsize=9)
+    ax_auto.set_ylabel('autocorr (Hz)')
+    ax_auto.set_xlabel('time (ms)')
+    ax_auto.set_xlim(-150,150)
+
+    # --- Plot 4f: ISI (Bottom Stack) ---    
+    ISI = np.diff(spike_times_cluster) * 1000
+    bin_isi_ms = 0.1 if (1/np.mean(ISI)*1000 > 10) else 1
+    bin_isi_s = bin_isi_ms / 1000  
+    n_intervals = len(ISI)
+    weights_isi = np.ones_like(ISI) / (n_intervals * bin_isi_s)
+    sns.histplot(ax=ax_isi, x=ISI, weights=weights_isi,
+                 element='step', binwidth=bin_isi_ms, color='grey')
+    ax_isi.set_xlim(-2, 50)
+    #ax_isi.set_title('ISI')
+    ax_isi.set_xlabel('time (ms)')
+    ax_isi.set_ylabel('ISI (Hz)')
+
+    # 3. Cluster Info Text
     cluster_line = neuronsdf.query(f'cluster_id == {cluster_id}')
     cluster_info_text = f"""
     {cluster_line['cell_type'].values[0]}
-    KSLabel: {cluster_line['KSLabel'].values[0]}
+    KS: {cluster_line['KSLabel'].values[0]} | SF: {cluster_line['SF'].values[0]} 
     n_spikes: {cluster_line['n_spikes'].values[0]}
     channel: {cluster_line['ch'].values[0]}
     depth: {cluster_line['depth'].values[0]}
     shank: {cluster_line['sh'].values[0]}
     """
-    if bool_click:
-        fig.text(0.5, 0.21, cluster_info_text, ha='center', va='center', fontsize=14)
-    else:
-        fig.text(0.43, 0.21, cluster_info_text, ha='center', va='center', fontsize=14)
-
-
-    ##### new stuff
-
-    lastrow_gs = axs[2, 0].get_gridspec()
-    [fig.delaxes(axs[2, col]) for col in range(3)]
-
-    if bool_click:
-        axs[2, 0] = fig.add_subplot(lastrow_gs[2, :3])  # Expand across 3 columns
-    else:
-        axs[2,0] = fig.add_subplot(lastrow_gs[2,:2]) # if there is no click, then there's one less few column
-    cluster_amplitudes = sorted_data.amplitudes[sorted_data.spike_clusters == cluster_id]
-    
-    axs[2,0].plot(spike_times_cluster/60, cluster_amplitudes,'.', color = 'black', ms = 1)
-    axs[2,0].set_xlabel('time in session (min)')
-    axs[2,0].set_xlim(0,spike_times_cluster[-1]/60)
-    axs[2,0].set_ylabel('amplitude (pseudo volts)')
-
-    ax_FR = axs[2,0].twinx()
-    color = 'tab:blue'
-    ax_FR.set_ylabel('mean firing rate (Hz)', color = color)
-    sns.histplot(ax = ax_FR, x = spike_times_cluster/60, binwidth=1, weights = 1/60, element = 'step', alpha = 0.5)
-    ax_FR.tick_params(axis = 'y', labelcolor=color)
-    ax_FR.spines['right'].set_visible(True)
-    ax_FR.spines['right'].set_color(color)
-
-    ax_FI = inset_axes(axs[2,0], width="100%", height="10%", loc="upper center", borderpad=0)
-    ax_nprots = inset_axes(axs[2,0], width="100%", height="5%", loc="upper center", borderpad=0)
-    FI_values = syncdf.loc[syncdf.npx_time.dropna().index, 'FI'].values #syncdf.FI.values
-    nprots_values = syncdf.loc[syncdf.npx_time.dropna().index, 'n_protocols'].values #syncdf.n_protocols.values
-    ax_FI.matshow(FI_values.reshape(1,len(FI_values)), aspect = 'auto', cmap = cmap_FI)
-    ax_FI.set_axis_off()
-    ax_nprots.matshow(nprots_values.reshape(1,len(nprots_values)), aspect = 'auto', cmap = cmap_nprots)
-    ax_nprots.set_axis_off()
-
-    if bool_click:
-        fig.delaxes(axs[2,3])
-    #else:
-    #    fig.delaxes(axs[2,2])
-
-    ax_distamplitudes = inset_axes(axs[2,0], width="10%", height="100%", loc="center right", borderpad=-12)
-    sns.histplot(ax = ax_distamplitudes, y = cluster_amplitudes, stat = 'density', element='step', color = 'grey')
-    #ax_distamplitudes.set_axis_off()
-
-    ax_probe = inset_axes(axs[2,0], width="5%", height="120%", loc="center right", borderpad=-21)
-    plot_probe_sofia(cluster_id, ax_probe, sorted_data, neuronsdf)
-    ax_probe.set_axis_off()
-
-    plot_templates(cluster_id, axs[2,-3], sorted_data, neuronsdf)
-    axs[2,-3].set_ylabel('template waveform (pseudo volts)')
-    axs[2,-3].set_xlabel('time (ms)')
-    #axs[2,4].set_axis_off()
-
-    ISI = np.diff(spike_times_cluster)*1000 # in ms
-    if 1/np.mean(ISI)*1000 > 10:
-        binISI = .1
-    else:
-        binISI = 1
-    
-    sns.histplot(ax = axs[2,-1], x = ISI, stat = 'count', element = 'step', binwidth=binISI, color = 'grey')
-    axs[2,-1].set_xlim(-2,100)
-    axs[2,-1].set_xlabel('time (ms)')
-    axs[2,-1].set_title('ISI')
-
-    window_start = -.2
-    window_end = .2
-    sns.histplot(ax = axs[2,-2], x = neuronsdf.query(f'cluster_id == {cluster_id}').spikes_self_aligned.values[0]*1000, stat = 'frequency', element = 'step', binwidth = 1, color = 'grey')
-    axs[2,-2].set_xlim(window_start*1000,window_end*1000)
-    axs[2,-2].set_xlabel('time (ms)')
-    axs[2,-2].set_ylabel('spikes / ms')
-    axs[2,-2].set_title('autocorrelogram')
+    #txt_x = 0.75 if bool_click else 0.43
+    ax_txt.text(.5, 0.5, cluster_info_text, ha='center', va='center', fontsize=14)
+    ax_txt.set_axis_off()
 
 
     figtitle = f'{sorted_data.animal} | {sorted_data.date} | experiment {sorted_data.exp} | cluster_id {cluster_id}'
@@ -881,7 +1051,9 @@ def produce_mega_neuron_fig(cluster_id, sorted_data, syncdf, neuronsdf, fig_save
         figtitle = figtitle.replace('|','-')
         plt.savefig(rf'{fig_save_path}/{figtitle}.png', facecolor = 'white')
         plt.close()
+
 #%%
+
 def produce_neuron_bhv_fig(cluster_id, alignments, sorted_data, syncdf, cluster_info, fig_save_path, window = (-8,8), save_fig = True):
 
     fig, axs = plt.subplots(2,len(alignments), figsize=(4*len(alignments),6), tight_layout = True, sharex = 'col', height_ratios = [1,1])
@@ -1046,6 +1218,14 @@ def get_PCA_windows(exp, psthbin):
         window_III = (window_II[-1]+1,window_II[-1]+int(60/psthbin))
     return [window_I,window_II,window_III]
 
+def sort_index_order(split_index, index_order, concat_for_PCA, ax = None):
+    index_order_sorted = np.concatenate([index_order[split_index:], index_order[:split_index]])
+    vmin, vmax = np.quantile(concat_for_PCA, [.01,.99])
+    if ax == None:
+        plt.imshow(concat_for_PCA[index_order_sorted], aspect = 'auto', origin = 'lower', vmin = vmin, vmax = vmax, cmap = 'magma')
+    else:
+        ax.imshow(concat_for_PCA[index_order_sorted], aspect = 'auto', origin = 'lower', vmin = vmin, vmax = vmax, cmap = 'magma')
+    return index_order_sorted
 
 # %%
 """

@@ -3,7 +3,10 @@
 import os
 from pathlib import Path
 
-DROPBOX_ROOT = r"D:\\Learning Lab Dropbox\\Learning Lab Team Folder\\Patlab protocols"
+
+## get this automatically so that it is computer agnostic!
+DROPBOX_ROOT = r"D:\Learning Lab Dropbox\Learning Lab Team Folder\Patlab protocols"
+#DROPBOX_ROOT = r"C:\Users\admin\Learning Lab Dropbox\Learning Lab Team Folder\Patlab protocols"
 
 DROPBOX_DATA_LOCATION = os.path.join(DROPBOX_ROOT,'Data')
 

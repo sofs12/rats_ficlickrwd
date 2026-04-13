@@ -400,15 +400,15 @@ def determine_trial_zeros(trialno):
 
     return pre_trial_zeros
 
-
-def query_and_compute_snippets(df, query_condition, events_column, time_column, signal_column, alignment_window, delta_time = 1/100, nanify = True):
+#%%
+def query_and_compute_snippets(df, query_condition, events_column, time_column, signal_column, alignment_window, delta_time = 1/100):
 
     time = np.hstack(df[time_column].values)
     signal = np.hstack(df[signal_column].values)
 
     event_times = df.query(query_condition)[events_column].values
     event_times = event_times[~np.isnan(event_times)].flatten()
-    snippets, alignment_time = signal2eventsnippets(time, signal, event_times, alignment_window, delta_time, nanify)
+    snippets, alignment_time = signal2eventsnippets(time, signal, event_times, alignment_window, delta_time)
 
     return snippets, alignment_time
 
@@ -738,3 +738,5 @@ def zscore_list(arr):
 
 
 
+
+# %%

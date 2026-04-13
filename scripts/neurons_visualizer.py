@@ -284,16 +284,31 @@ ephys_dates_dict = {
 """
 
 #%%
-unidf = pd.read_pickle(f'{PATH_DATAFRAMES}/unidf.pkl')
-blocksdf = pd.read_pickle(f'{PATH_DATAFRAMES}/blocksdf_july25_thesis_dataset.pkl')
+#unidf = pd.read_pickle(f'{PATH_DATAFRAMES}/unidf.pkl')
+
+#blocksdf = pd.read_pickle(fr'{PATH_DATAFRAMES}/blocksdf_july25_thesis_dataset.pkl')
+blocksdf = pd.read_pickle(fr'{PATH_DATAFRAMES}\blocksdf_march26_Ruthenium_Palladium.pkl')
 #blocksdf = pd.read_pickle(fr'D:\Learning Lab Dropbox\Learning Lab Team Folder\Patlab protocols\Data\FIClickRwd\analysis_ephys_thesis\dfs\blocksdf.pkl')
 #blocksdf = pd.read_pickle(rf'{PATH_DATAFRAMES}/blocksdf.pkl')
 
 ## originally from the analysis_ephys_thesis folder
 #all_aggregated_neuronsdf = pd.read_pickle(rf"D:\Learning Lab Dropbox\Learning Lab Team Folder\Patlab protocols\Data\FIClickRwd\analysis_ephys_thesis\dfs\all_aggregated_neuronsdf.pkl")
+#%%
+
+allneurons_Ruthenium = pd.read_pickle(rf"D:\Learning Lab Dropbox\Learning Lab Team Folder\Patlab protocols\Data\FIClickRwd\analysis_ephys\Ruthenium_animalneurondf.pkl")
+#%%
+allneurons_Palladium = pd.read_pickle(rf"D:\Learning Lab Dropbox\Learning Lab Team Folder\Patlab protocols\Data\FIClickRwd\analysis_ephys\Palladium_animalneurondf.pkl")
+#%%
+allneurons_Ruthenium.keys()
+
+#%%
+all_aggregated_neuronsdf = pd.concat([allneurons_Palladium, allneurons_Ruthenium])
+#%%
+
 all_aggregated_neuronsdf = pd.read_pickle(rf'{PATH_DATAFRAMES}/all_aggregated_neuronsdf.pkl')
 
-photometrydf = pd.read_pickle(rf'{PATH_DATAFRAMES}/agg_photometry_withICA.pkl')
+#photometrydf = pd.read_pickle(rf'{PATH_DATAFRAMES}/agg_photometry_withICA.pkl')
+photometrydf = pd.read_pickle(rf'{PATH_DATAFRAMES}')
 #%%
 animal = 'Zirconium' ## single animal
 bool_multiple_animals = False

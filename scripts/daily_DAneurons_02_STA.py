@@ -148,11 +148,11 @@ def main():
         plt.savefig(fr'{DANEURONS_PATH}\spike_triggered_DA\{figtitle.replace('|','_')}')
         plt.close()
  
-
-    #df = pd.DataFrame()
-    #df['cluster_id'] = clusters_to_consider
-    #df['av_DA_around_spikes'] = av_allneurons_DA_spikes.tolist()
-
+    ## save df of STAs
+    df = pd.DataFrame()
+    df['cluster_id'] = clusters_to_consider
+    df['av_DA_around_spikes'] = av_allneurons_DA_spikes.tolist()
+    df.to_pickle(fr'{DANEURONS_PATH}\STAdf.pkl')
 
 if __name__ == '__main__':
     main()

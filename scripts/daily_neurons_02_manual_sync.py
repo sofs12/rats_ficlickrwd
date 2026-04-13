@@ -49,8 +49,8 @@ setup()
 .##.....##.##....##.####.##.....##.##.....##.########....########..##.....##....##....########
 """
 
-animal = 'Palladium'
-date = '260311'
+animal = 'Cadmium'
+date = '260408'
 # %%
 
 
@@ -76,7 +76,8 @@ if os.path.exists(fr'{SAVE_SYNC_PATH}/rising_edges.npy'):
     rising_edges = np.load(fr'{SAVE_SYNC_PATH}/rising_edges.npy')
     print(f'rising edges loaded for {animal} {date}')
 else:
-    print('rising edges not found, run daily_neurons_01_extract_sync_correct_geometry.py to extract them from the sync channel of the neuropixel recording')
+    print('ERROR\nrising edges not found, run daily_neurons_01_extract_sync_correct_geometry.py to extract them from the sync channel of the neuropixel recording')
+    print('GO RUN daily_neurons_01 first!\n')
 
 
 """
@@ -121,14 +122,11 @@ if (len(duration_npx) != len(duration_bhv)):
 plt.plot(duration_bhv,'.-', label = 'bhv')
 
 
-### for the case where the npx doesn't see the full session
-#trials = np.concatenate([[np.nan]*8,rising_edges])
-#trials = np.delete(trials,[22,44,63])
+trials = np.delete(rising_edges,[-3])
 
-trials = np.delete(rising_edges,[0,26,47,67,87,93])
+## if npx disconnected, add nans at the end; uncomment this next line and adjust trial totals
+trials =  np.concatenate([[np.nan]*5, trials,[np.nan]*93])
 
-#trials =  np.concatenate([trials, [np.nan]*24])
-#np.delete(rising_edges,[0,24,55,56,104,102,103,112,117,120,131,137,143])
 duration_npx = np.diff(trials)
 
 plt.plot(duration_npx,'.-', label = 'npx')
