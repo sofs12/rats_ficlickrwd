@@ -75,8 +75,8 @@ def get_event_indices(timestamps, events, window, fs):
     all_indices = all_indices[(all_indices >= 0) & (all_indices < len(timestamps))]
     return np.unique(all_indices)
 #%%
-animal = 'Ruthenium'
-date = '260327'
+animal = 'Cadmium'
+date = '260409'
 
 
 ## now looking at my old code, 01_DAneurons.py
@@ -502,18 +502,6 @@ for cluster_id in neuronsdf.query('(SF == "good" or SF == "ok") and (cell_type =
     fig.savefig(rf'{PATH_SAVE_STA_FIGS}\{figtitle.replace("|","_")}.png', dpi = 300)
 
     plt.close()
-
-
-# %%
-
-#axs[2,1].plot(t_snippes, snippes.T, color = 'black', alpha = 0.01)
-#axs[2,1].plot(t_snippes, np.nanmean(snippes, axis = 0), color = 'white')
-#axs[2,1].set_ylim(np.nanquantile(snippes, .05), np.nanquantile(snippes, .95))
-#axs[1,1].set_ylim(0)
-#axs[2,1].set_xlim(-4,4)
-
-
-# %%
 
 
 # %%

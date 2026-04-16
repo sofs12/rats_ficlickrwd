@@ -218,7 +218,7 @@ def main():
     #plt.plot(downharpdf.ds_tdtomato)
     #plt.plot(downharpdf.ds_gfp)
     #plt.plot(downharpdf.ds_continuous_encoder)
-    
+
 
     #np.where(np.abs(zscore(np.diff(butter_filter(downharpdf.ds_tdtomato, 0.01, fs, 'low'))))>4)
     
@@ -256,6 +256,7 @@ def main():
 
     downharpdf['tdtomato_poly_flat'] = downharpdf.ds_tdtomato - downharpdf.poly_tdtomato
     downharpdf['gfp_poly_flat'] = downharpdf.ds_gfp - downharpdf.poly_gfp
+
 
 
     fig, axs = plt.subplots(3, figsize = (12,6), tight_layout = True, sharex = True)
@@ -637,7 +638,7 @@ def main():
     plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
 
 
-#%%
+
 #eventalignment = 'rwd_lever_abs'
 #for colname in ['deltaF_poly_tdtomato', 'deltaF_poly_gfp']:#= 'DA_poly_session'
 #    snipps, time = signal2eventsnippets(downharpdf.timestamp_session,
@@ -652,7 +653,7 @@ def main():
 #                                        [-6,6], .01)
 #plt.plot(time, 0.05+np.nanmean(snipps, axis = 0))
 
-#%%
+
 
 if __name__ == '__main__':
     main()

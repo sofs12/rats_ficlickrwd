@@ -1311,3 +1311,49 @@ def load_ibl_sorter(ibl_sorter_path, animal, date, exp):
         exp = exp #these last should be parte of some session data
     )
 # %%
+
+def filter_common_cells(cell_lists, matrices):
+    """
+    Filters matrices to include only rows corresponding to cells common across all cell_lists.
+
+    Parameters
+    ----------
+    cell_lists : list of list[dict]
+        A list where each element is a list of dicts representing cells.
+    matrices : list of np.ndarray
+        A list of matrices aligned with the cell_lists (same number of elements).
+        Each matrix should have rows aligned to cells in the corresponding cell_list.
+
+    Returns
+    -------
+    filtered_matrices : list of np.ndarray
+        The matrices filtered to only include rows corresponding to common cells.
+    common_cells : list of dict
+        The list of common cell dicts.
+    """
+
+    # Convert lists of dicts to sets of tuples for comparison
+    sets = [{tuple(d.items()) for d in cells} for cells in cell_lists]
+
+    # Find intersection across all sets
+    common = set.intersection(*sets)
+
+    # Convert back to dicts
+    common_cells = [dict(t) for t in common]
+
+    # For each cell list, find indices of common cells
+    index_lists = []
+    for cells in cell_lists:
+        indices = []
+        for entry in common_cells:
+            for i, d in enumerate(cells):
+                if d == entry:
+                    indices.append(i)
+        index_lists.append(indices)
+
+    # Filter each matrix by its indices
+    filtered_matrices = [
+        mat[idx, ...] for mat, idx in zip(matrices, index_lists)
+    ]
+
+    return filtered_matrices, common_cells
