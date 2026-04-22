@@ -17,7 +17,6 @@ eventcode_ref, eventcode_ref_reverse = logging.getEventCodes(rf"{PROJECT_ROOT}\r
 
 animals_folders = os.listdir(PATH_TO_GET_BHV_FILES)
 animals_folders.remove('Zero')
-#animals_folders.remove('Cadmium')
 #animals_folders.remove('Indium')
 #animals_folders.remove('Tin')
 

@@ -8,9 +8,13 @@ bodypart_color_dic = {
     'implantBase' : '#168736'
 }
 
-rwd_dict = { 7: '#CCE3DE',
-            14: '#A4C3B2',
-            28: '#6B9080'}
+#rwd_dict = { 7: '#CCE3DE',
+#            14: '#A4C3B2',
+#            28: '#6B9080'}
+
+rwd_dict = { 7: '#636f82',
+            14: '#81a6fc',
+            28: '#2e6dff'}
 
 FI_dict = {15: '#cba6e3',
               30: '#81a6fc',

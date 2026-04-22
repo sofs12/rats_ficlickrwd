@@ -49,8 +49,8 @@ setup()
 .##.....##.##....##.####.##.....##.##.....##.########....########..##.....##....##....########
 """
 
-animal = 'Silver'
-date = '260420'
+animal = 'Cadmium'
+date = '260421'
 # %%
 
 
@@ -122,10 +122,10 @@ if (len(duration_npx) != len(duration_bhv)):
 plt.plot(duration_bhv,'.-', label = 'bhv')
 
 
-trials = np.delete(rising_edges,[0,24,44,64])
+trials = np.delete(rising_edges,[0,24,46,64,86])
 
 ## if npx disconnected, add nans at the end; uncomment this next line and adjust trial totals
-#trials =  np.concatenate([[np.nan]*9, trials])
+#trials =  np.concatenate([trials, [np.nan]*3])
 
 duration_npx = np.diff(trials)
 

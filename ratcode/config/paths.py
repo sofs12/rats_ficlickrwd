@@ -26,7 +26,7 @@ def get_dropbox_root():
 DROPBOX_ROOT = get_dropbox_root()
 
 if DROPBOX_ROOT:
-    print(f"Success! Path set to: {DROPBOX_ROOT}")
+    print(f"Dropbox path set to: {DROPBOX_ROOT}")
 else:
     print("Could not find Dropbox. Check if the app is installed.")
 

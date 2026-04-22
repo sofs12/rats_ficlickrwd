@@ -80,3 +80,7 @@ python scripts/daily_DAneurons_01_produce_simpledf.py animal date
 python scripts/daily_DAneurons_02_STA.py animal date
 ```
 
+### how to aggregate data
+
+- aggregate_photometry.py can be ran from terminal with no parameters. It will aggregate all dfs stored in the analysis_photometry folder and automatically save a dataframe with all the information in the dfs folder. This will be named ```aggregate_photometry_YYmmdd.pkl``` (YYmmdd the date in which the aggregated df was produced).
+If there are sessions that are trash and should not be aggregated, move the corresponding dfs (_NEWjointdf.pkl and _downharpdf.pkl) to the trash subfolder. One can also select the dates to use a posteriori and filter out the days in the aggregated dataframe
