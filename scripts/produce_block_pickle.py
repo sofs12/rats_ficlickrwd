@@ -20,7 +20,6 @@ animals_folders.remove('Zero')
 #animals_folders.remove('Cadmium')
 #animals_folders.remove('Indium')
 #animals_folders.remove('Tin')
-#animals_folders.remove('Palladium')
 
 path_to_animals_bhv_files = []
 path2 = []

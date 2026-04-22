@@ -121,3 +121,8 @@ def drop_nan_rows_in_matrix(matrix):
 
     mask = ~np.isnan(matrix).any(axis=1)
     return matrix[mask]
+
+def terciles(x):
+    if x.nunique() < 3:
+        return pd.Series([np.nan] * len(x), index=x.index)  # or assign fewer bins
+    return pd.qcut(x, 3, labels=['T1','T2','T3'], duplicates='drop')

@@ -1236,24 +1236,52 @@ def add_3d_line_w_start_matplotlib(ax, projection, color, legend, smooth_sigma, 
     if 'z' in project_axis:
         ax.plot(x,y,location_project_axis[project_axis == 'z']*np.ones_like(z), color = color, alpha = 0.2, ls = linestyle)
 
-def add_3d_line_w_start(fig, projection, color, legend):
-    # main trajectory line
-    fig.add_trace(go.Scatter3d(
-    x=projection[:, 0],
-    y=projection[:, 1],
-    z=projection[:, 2],
-    mode='lines',
-    line=dict(color = color, width=3),
-    name = legend
-    ))
+#def add_3d_line_w_start(fig, projection, color, legend):
+#    # main trajectory line
+#    fig.add_trace(go.Scatter3d(
+#    x=projection[:, 0],
+#    y=projection[:, 1],
+#    z=projection[:, 2],
+#    mode='lines',
+#    line=dict(color = color, width=3),
+#    name = legend
+#    ))
+#
+#    #starting point
+#    fig.add_trace(go.Scatter3d(
+#    x=[projection[0, 0]],
+#    y=[projection[0, 1]],
+#    z=[projection[0, 2]],
+#    mode='markers',
+#    name='start',
+#    marker=dict(color = color, size=5),
+#        showlegend=False
+#    ))
 
-    #starting point
-    fig.add_trace(go.Scatter3d(
-    x=[projection[0, 0]],
-    y=[projection[0, 1]],
-    z=[projection[0, 2]],
-    mode='markers',
-    name='start',
-    marker=dict(color = color, size=5),
-        showlegend=False
-    ))
+def add_3d_line_w_start(fig, projection, color, legend, row=None, col=None):
+    # main trajectory line
+    fig.add_trace(
+        go.Scatter3d(
+            x=projection[:, 0],
+            y=projection[:, 1],
+            z=projection[:, 2],
+            mode='lines',
+            line=dict(color=color, width=3),
+            name=legend
+        ),
+        row=row, col=col  # Added subplot positioning
+    )
+
+    # starting point
+    fig.add_trace(
+        go.Scatter3d(
+            x=[projection[0, 0]],
+            y=[projection[0, 1]],
+            z=[projection[0, 2]],
+            mode='markers',
+            name='start',
+            marker=dict(color=color, size=5),
+            showlegend=False
+        ),
+        row=row, col=col  # Added subplot positioning
+    )
