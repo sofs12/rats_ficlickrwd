@@ -28,22 +28,24 @@ python scripts/daily_photometry animal date True
 
 ### pipeline to produce sort and analyze the ephys data
 
-- ON LAMBDA, on user spike, run the script run_ibl_sort_sofia_drift_CHECK.py script. SPECIFY THE PATHS AND HOW TO ACTIVATE THE ENVIRONMENTS
+- On LAMBDA, go to user spike and run the script ```run_ibl_sort_sofia_drift_amplitude.py```. The command line expects as argument the home recording folder only (no more need to specify the paths to .bin or .meta):
 
 ```
-python run_ibl_sort_sofia LA LA LA /media/spike/PortableSSD/Palladium260302_imec0/Palladium260302_imec0_LALALA/Palladium260302_imec0lalalala.meta /media/spike/PortableSSD/Palladium260302_imec0/Palladium260302_imec0_LALALA/Palladium260302_imec0lalalala.bin
+python run_ibl_sort_sofia_drift_amplitude.py /media/spike/PortableSSD/Palladium260302_imec0/
 ```
 
 a new folder will be created on the same directory as the meta and bin files. this is the results of the ibl sorter
 
-- move to personal computer and use phy to inspect the cells. I do this directly on the Portable SSD (the dropbox path is too long and phy throws errors)
+- move to personal computer and use phy to inspect the cells. I do this directly on the Portable SSD. The reason for doing it directly in the Portable SSD is twofold: 1) the dropbox path is too long and phy throws errors (it is possible to fix this though -- confer with your favorite LLM); 2) my dropbox is in a hard disk, not SSD, so accessing spike data is very slow
 
 ```
 H:
-cd H:\PortableSSD\recording_folder\..\ibl_sorter
+cd H:\PortableSSD\recording_folder\..\ibl_sorter_drift_amplitude
 conda activate phy2
 phy template-gui params.py
 ```
+
+(note that H is the port it connects as in my computer; adjust as needed)
 
 - copy the recording folder to dropbox, to "ephys\animal"
 

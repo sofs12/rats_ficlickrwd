@@ -401,26 +401,63 @@ def determine_trial_zeros(trialno):
     return pre_trial_zeros
 
 #%%
+#def query_and_compute_snippets(df, query_condition, events_column, time_column, signal_column, alignment_window, delta_time = 1/100):
+#
+#    time = np.hstack(df[time_column].values)
+#    signal = np.hstack(df[signal_column].values)
+#
+#    event_times = df.query(query_condition)[events_column].values
+#    event_times = event_times[~np.isnan(event_times)].flatten()
+#    snippets, alignment_time = signal2eventsnippets(time, signal, event_times, alignment_window, delta_time)
+#
+#    return snippets, alignment_time
+
 def query_and_compute_snippets(df, query_condition, events_column, time_column, signal_column, alignment_window, delta_time = 1/100):
+    # Filter the dataframe first
+    queried_df = df.query(query_condition).copy()
+    
+    # Identify rows where the event_column is NOT NaN
+    valid_mask = queried_df[events_column].notna()
+    valid_df = queried_df[valid_mask]
+    
+    # Get the timestamps and the original indices
+    event_times = valid_df[events_column].values
+    original_indices = valid_df.index.values # This preserves the row ID
+    
+    # Flatten time/signal (assuming these are the nested arrays in the DF)
+    time = np.concatenate(df[time_column].values)
+    signal = np.concatenate(df[signal_column].values)
 
-    time = np.hstack(df[time_column].values)
-    signal = np.hstack(df[signal_column].values)
-
-    event_times = df.query(query_condition)[events_column].values
-    event_times = event_times[~np.isnan(event_times)].flatten()
     snippets, alignment_time = signal2eventsnippets(time, signal, event_times, alignment_window, delta_time)
 
-    return snippets, alignment_time
+    # Return snippets AND the row info
+    return snippets, alignment_time, valid_df
+
 
 def plot_snippets(snippets, alignment_time, ax_heatmap, ax_mean, q_min=.01, q_max=.99, bool_plot_mean = True, cmap = 'viridis', color_DA_traces = 'blue'):
 
     v_min = np.nanquantile(np.hstack(snippets), q_min)
     v_max = np.nanquantile(np.hstack(snippets), q_max)
 
-    ax_heatmap.imshow(snippets, aspect = 'auto', vmin = v_min, vmax = v_max, interpolation = 'nearest',
-                extent = [alignment_time[0], alignment_time[-1], len(snippets), 1], cmap = cmap)
+    # fix visual alignments
+    dt = alignment_time[1] - alignment_time[0]
+    left = alignment_time[0] - dt/2
+    right = alignment_time[-1] + dt/2
+
+    ax_heatmap.imshow(
+        snippets, 
+        aspect='auto', 
+        vmin=v_min, 
+        vmax=v_max, 
+        interpolation='nearest', 
+        origin='lower',
+        extent=[left, right, 0, len(snippets)], 
+        cmap=cmap
+    )
+
     if bool_plot_mean:
         ax_mean.plot(alignment_time, np.nanmean(snippets, axis = 0), color = color_DA_traces)
+        #ax_mean.set_xlim(left, right)
 # %%
 
 """
@@ -600,16 +637,37 @@ def figure_multiple_alignments_w_raster(df, path_save_figs, DA_column = 'DA', bo
 
 ### from figs_thesis.ipynb ----
 
-def compute_snippets_across_days(df, query_condition, alignment, DA_column = 'DA_zscored_session', window = (-2,2)):
+#def compute_snippets_across_days(df, query_condition, alignment, DA_column = 'DA_zscored_session', window = (-2,2)):
+#    all_snippets = []
+#    for date in df.date.unique():
+#        snippets, time = query_and_compute_snippets(
+#        df.query(f'date == "{date}"'),
+#        query_condition, alignment, 'time_DA', DA_column, window)
+#
+#        all_snippets.append(snippets)
+#
+#    return time, np.vstack(all_snippets)
+
+def compute_snippets_across_sessions(df, query_condition, alignment, DA_column='DA_zscored_session', window=(-2,2)):
     all_snippets = []
-    for date in df.date.unique():
-        snippets, time = query_and_compute_snippets(
-        df.query(f'date == "{date}"'),
-        query_condition, alignment, 'time_DA', DA_column, window)
+    all_metadata = []
+    
+    for animaldate in df.animaldate.unique():
+        # Get snippets and the dataframe of trials used
+        snippets, time, meta = query_and_compute_snippets(
+            df[df.animaldate == animaldate], # More efficient than .query() in a loop
+            query_condition, alignment, 'time_DA', DA_column, window
+        )
 
         all_snippets.append(snippets)
+        all_metadata.append(meta)
 
-    return time, np.vstack(all_snippets)
+    # Stack the signals into one big matrix
+    signal_matrix = np.vstack(all_snippets)
+    # Combine all trial metadata into one DataFrame
+    full_metadata_df = pd.concat(all_metadata).reset_index(drop=True)
+
+    return time, signal_matrix, full_metadata_df
 
 def drop_nan_rows_in_matrix(matrix):
     return matrix[~np.isnan(matrix).any(axis=1)]

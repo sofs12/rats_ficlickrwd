@@ -30,7 +30,7 @@ from ratcode.config.paths import PATH_STORE_PICKLES, DROPBOX_TASK_PATH, PATH_DAT
 from ratcode.common.logging import determine_experiment
 from ratcode.common.colorcodes import *
 from ratcode.behavior import change_point
-from ratcode.photometry.photometry import get_prediction, quantile_regression, signal2eventsnippets, find_poly, segment_and_fit_function, butter_filter, mask_jumps, make_continuous, compute_snippets_across_days, drop_nan_rows_in_matrix, bootstrap_ci, plot_snippets
+from ratcode.photometry.photometry import get_prediction, quantile_regression, signal2eventsnippets, find_poly, segment_and_fit_function, butter_filter, mask_jumps, make_continuous, compute_snippets_across_sessions, drop_nan_rows_in_matrix, bootstrap_ci, plot_snippets
 from ratcode.common.dataframe import group_and_listify
 from ratcode.common.time import convert_date_bonsai, convert_timestamp
 from ratcode.common.math import drop_nans_matrix
