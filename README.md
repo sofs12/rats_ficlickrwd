@@ -40,7 +40,7 @@ a new folder will be created on the same directory as the meta and bin files. th
 
 ```
 H:
-cd H:\PortableSSD\recording_folder\..\ibl_sorter_drift_amplitude
+cd H:\PortableSSD\recording_folder\..\ibl_sorter_results_drift_amplitude
 conda activate phy2
 phy template-gui params.py
 ```

@@ -283,7 +283,7 @@ def main():
     figtitle = f'{animal} {date} | exp {exp} | DA from robust regression | signals flattened via 3rd order polynomial'
     fig.suptitle(figtitle)
 
-    plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|', '_')}.png', dpi = 300)
+    plt.savefig(rf"{PATH_SAVE_FIGS}\{figtitle.replace('|', '_')}.png", dpi = 300)
 
 
 
@@ -301,7 +301,7 @@ def main():
 
     fig.suptitle(figtitle)
 
-    plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
+    plt.savefig(rf"{PATH_SAVE_FIGS}\{figtitle.replace('|', '_')}.png", dpi = 300)
 
 
     """
@@ -314,7 +314,7 @@ def main():
     .##.....##.########..######...##.....##.########..######...######..####..#######..##....##....########..########..######...#######..########..########.##.....##
     """
 
-    if bool_encoder == False:
+    if bool_encoder == False: ## this is not working FIX
         downharpdf['DA_encoder_session'] = downharpdf['DA_poly_session']
 
     else:
@@ -475,6 +475,8 @@ def main():
     ....##....##.....##.####.##.....##.########....##.......####..######..
     """
 
+    #### ADD IF CONDITION TO ONLY PLOT IF THERE ARE NOT NANS / if the fig exists
+
     print('plotting trial figs...')
 
     for tt in jointdf.trialno.values:
@@ -488,49 +490,50 @@ def main():
 
 
 
-        fig, axs = plt.subplots(3,1, figsize = (10,6), sharex = True, tight_layout = True)
+        fig, axs = plt.subplots(2,1, figsize = (10,4), sharex = True, tight_layout = True)
 
         for lvr in all_lever_presses:
-            for ii in range(3):
+            for ii in range(2):
                 axs[ii].axvline(lvr, color = 'grey', lw = 0.5)
 
         axs[0].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').tdtomato_poly_flat)), color = 'red', lw = 1, label = 'tdTomato')
         axs[0].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat)), color = 'green', lw = 1, label = 'dLight')
 
         axs_encoder = axs[0].twinx()
-        axs_encoder.plot(t_trial, continuous_encoder, color = 'blue', lw = 1, alpha = 0.5, label = 'enc_pos')
+        axs_encoder.plot(t_trial, continuous_encoder, lw = 1, alpha = 0.5, label = 'enc_pos')
         #axs[0].plot(t_trial, zscore(encoder_vel), color = 'orange', lw = 1, alpha = 0.5)
 
         axs[0].set_ylabel('signals')
 
-        axs[1].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').DA_poly_session)), color = 'purple', lw = 1, label = 'robust session')
-        axs[1].set_ylabel('tdTomato')
+        axs[1].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').DA_poly_session)), color = 'teal', lw = 1, label = 'reg w tdTomato only')
+        axs[1].set_ylabel('DA')
 
-        da_trial = np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat) - get_prediction(np.hstack(jointdf.query(f'trialno == {tt}').tdtomato_poly_flat),np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat))
-        axs[1].plot(t_trial, zscore(da_trial), color = 'teal', lw = 1, label = 'robust trial')
+        ## no longer doing regressions on a trial by trial basis
+        #da_trial = np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat) - get_prediction(np.hstack(jointdf.query(f'trialno == {tt}').tdtomato_poly_flat),np.hstack(jointdf.query(f'trialno == {tt}').gfp_poly_flat))
+        #axs[1].plot(t_trial, zscore(da_trial), color = 'teal', lw = 1, label = 'robust trial')
 
 
 
-        axs[2].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').DA_encoder_session)), color = 'purple', lw = 1, label = 'encoder session')
+        axs[1].plot(t_trial, zscore(np.hstack(jointdf.query(f'trialno == {tt}').DA_encoder_session)), color = 'purple', lw = 1, label = 'reg also w encoder pos and vel')
 
-        ## trial regression with encoder
-        X = np.column_stack([zscore(tomato), zscore(continuous_encoder), zscore(encoder_vel)])
-        X_with_const = sm.add_constant(X)
-        mod = sm.QuantReg(gfp, X_with_const)
-        res = mod.fit(q = 0.5)
+        ## trial regression with encoder - skipped
+        #X = np.column_stack([zscore(tomato), zscore(continuous_encoder), zscore(encoder_vel)])
+        #X_with_const = sm.add_constant(X)
+        #mod = sm.QuantReg(gfp, X_with_const)
+        #res = mod.fit(q = 0.5)
 
-        axs[2].plot(t_trial, zscore(res.resid), color = 'teal', lw = 1, label = 'encoder trial')
-        axs[2].set_ylabel('tdTomato, enc_pos, _vel', fontsize = 12)
+        #axs[2].plot(t_trial, zscore(res.resid), color = 'teal', lw = 1, label = 'encoder trial')
+        #axs[2].set_ylabel('tdTomato, enc_pos, _vel', fontsize = 12)
 
-        for ii in range(3):
-            axs[ii].legend(frameon = False)
+        for ii in range(2):
+            axs[ii].legend(frameon = False, fontsize = 8)
 
         axs[-1].set_xlabel('time since reward (s)')
 
         figtitle = f"{animal} {date} | trial {tt} | regressions with tdTomato and encoder data"
         fig.suptitle(figtitle)
 
-        plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
+        plt.savefig(rf"{PATH_SAVE_FIGS}\{figtitle.replace('|', '_')}.png", dpi = 300)
         plt.close()
 
 
@@ -546,6 +549,11 @@ def main():
     """
 
     print('plotting heatmaps aligned to events for the different channels')
+
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+    from matplotlib.colors import ListedColormap
+    cmap_FI = ListedColormap(list(color_FI_blocks))
+    cmap_rwd = ListedColormap(list(color_rwd_blocks))
 
     fig, axs = plt.subplots(5,3, tight_layout = True, figsize = (12,12), sharex = True)
 
@@ -582,11 +590,23 @@ def main():
         axs[-1,ii].set_xlabel(f't since {eventalignment} (s)')
         axs[-1,ii].axvline(0, ls = '--', color = 'grey')
 
+    if exp == 'c':
+        exp_cond_values = jointdf['n_protocols'].values
+        cmap_cond = cmap_rwd
+    else:
+        exp_cond_values = jointdf['FI'].values
+        cmap_cond = cmap_FI
+
+    for loc in ['center left', 'center right']:
+        ax_index = inset_axes(axs[-2,-1], width="5%", height="100%", loc=loc, borderpad=0)
+        ax_index.matshow(exp_cond_values.reshape(len(exp_cond_values),1), aspect = 'auto', cmap = cmap_cond, origin = 'lower')
+        ax_index.set_axis_off()
+
     figtitle = f'{animal} {date} | experiment {determine_experiment(jointdf)} | channel traces aligned to events'
 
     fig.suptitle(figtitle)
 
-    plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
+    plt.savefig(rf"{PATH_SAVE_FIGS}\{figtitle.replace('|', '_')}.png", dpi = 300)
 
 
     """
@@ -635,7 +655,7 @@ def main():
 
     fig.suptitle(figtitle)
 
-    plt.savefig(rf'{PATH_SAVE_FIGS}\{figtitle.replace('|','_')}.png', dpi = 300)
+    plt.savefig(rf"{PATH_SAVE_FIGS}\{figtitle.replace('|', '_')}.png", dpi = 300)
 
 
 

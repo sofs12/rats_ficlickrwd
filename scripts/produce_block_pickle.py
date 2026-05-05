@@ -13,6 +13,9 @@ import os
 from ratcode.common import logging, dataframe
 from ratcode.config.paths import PATH_TO_GET_BHV_FILES, PATH_STORE_PICKLES
 
+import warnings
+warnings.filterwarnings('ignore')
+
 eventcode_ref, eventcode_ref_reverse = logging.getEventCodes(rf"{PROJECT_ROOT}\ratcode\config\FIClickRwd_EventCodes.h")
 
 animals_folders = os.listdir(PATH_TO_GET_BHV_FILES)
