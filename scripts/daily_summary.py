@@ -17,12 +17,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import seaborn as sns
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from matplotlib.colors import ListedColormap
 
 from ratcode.config.paths import PATH_STORE_PICKLES, DROPBOX_TASK_PATH, PATH_BHV_ANALYSIS
 from ratcode.common.logging import determine_experiment
 from ratcode.common.colorcodes import *
+from ratcode.common.plotting import remove_legend
 from ratcode.behavior import change_point
-
+from ratcode.behavior.pressing_rate import get_lever_press_matrix
 from ratcode.init import setup
 
 
@@ -57,6 +60,8 @@ def main():
     df['cp'] = df.apply(lambda x: np.nan if (x.count_lever < 3 or x.cp_after_FI) else x.cp, axis = 1)
     df['bool_cp'] = ~df.cp.isna()
     df['cp_normalised'] = df.cp/df.FI
+    df['lever_aligned_cp'] = df.query('bool_cp').apply(lambda x: x.lever_rel_s - x.cp, axis = 1)
+    df['lever_aligned_cp'] = df.query('bool_cp').lever_aligned_cp.apply(lambda x: x[x!=0])
 
 
     #plt.plot(df.trial_duration/1000)
@@ -69,12 +74,16 @@ def main():
     if exp == 'c':
         color_palette = color_rwd_blocks
         hue_param = 'n_protocols'
+        param_order = rwd_order
 
     else:
         color_palette = color_FI_blocks
         hue_param = 'FI'
+        param_order = FI_order
 
-    fig, axs = plt.subplots(2,3, figsize = (10,10), facecolor='w', tight_layout = True, sharex = 'col')
+    cmap_cond = ListedColormap(list(color_palette))
+
+    fig, axs = plt.subplots(2,3, figsize = (10,8), facecolor='w', tight_layout = True, sharex = 'col')
     #plt.figure(figsize = (20,10), facecolor='w', tight_layout = True)
 
     plt.suptitle(figtitle)
@@ -85,7 +94,7 @@ def main():
     sns.scatterplot(ax = axs[1,0], data = df.explode('lever_rel_s'), y = 'trialno', x = 'lever_rel_s',
                     color = 'grey', s = 10)
 
-    sns.histplot(ax = axs[0,1], data = df, x = 'cp_normalised', hue = hue_param,
+    sns.histplot(ax = axs[0,2], data = df, x = 'cp_normalised', hue = hue_param,
                  palette = color_palette, element = 'step', stat = 'density', common_norm=False)
 
     sns.scatterplot(ax = axs[1,0], data = df, x = 'FI', y = 'trialno', hue = hue_param, marker = '|', palette=color_palette)
@@ -95,6 +104,36 @@ def main():
         axs[-1,0].set_xlim(0,35)
     else:
         axs[-1,0].set_xlim(0,70)
+
+
+
+    ## pressing rate split by condition
+    sns.scatterplot(ax = axs[1,1], data = df.query('bool_cp').explode('lever_aligned_cp'), y = 'trialno', x = 'lever_aligned_cp',
+                    color = 'grey', s = 10)
+    
+    for ii in range(3):
+        _, bins, mean_rate, SEM, frac_finished_trials = get_lever_press_matrix(df.query(f'{hue_param} == {param_order[ii]} and bool_cp and count_lever > 3'), [-3,12], bin_width=.5)
+        axs[0,1].plot(bins[frac_finished_trials<=0.5], mean_rate[frac_finished_trials<=0.5], color = color_palette[ii])
+        axs[0,1].plot(bins[frac_finished_trials>0.5], mean_rate[frac_finished_trials>0.5], color = color_palette[ii],ls = 'dotted')
+
+    axs[1,1].set_xlabel('time since transition point (s)')
+    axs[1,1].set_xlim(-3,12)
+
+    axs[0,1].set_ylabel('pressing rate (Hz)')
+
+    exp_cond_values = df[hue_param].values        
+    for loc in ['center left', 'center right']:
+        for ii in range(2):
+            ax_index = inset_axes(axs[1,ii], width="5%", height="100%", loc=loc, borderpad=0)
+            ax_index.matshow(exp_cond_values.reshape(len(exp_cond_values),1), aspect = 'auto', cmap = cmap_cond, origin = 'lower')
+            ax_index.set_axis_off()
+
+    [axs[1,ii].set_ylim(0, df.trialno.max()+1) for ii in range(2)]
+
+    remove_legend(axs[1,0])
+
+    axs[0,2].set_xlabel('time since reward normalised to FI')
+
 
 
     plt.savefig(rf'{PATH_BHV_ANALYSIS}/{animal}/{figtitle.replace("|","_")}.png', transparent = False)
